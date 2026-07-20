@@ -203,7 +203,7 @@ def create_app(
     seed_attractions: bool = True,
     seed_foods: bool = True,
 ) -> FastAPI:
-    app = FastAPI(title="LingJing AI RAG API")
+    app = FastAPI(title="灵境智导 RAG API")
     frontend_dir = _project_root() / "frontend"
     visitor_dist_dir = frontend_dir / "dist"
     visitor_assets_dir = visitor_dist_dir / "assets"
@@ -520,7 +520,7 @@ def _visitor_build_hint_html() -> str:
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LingJing AI 游客端</title>
+    <title>灵境智导游客端</title>
     <style>
       body {
         margin: 0;

@@ -1,1 +1,1 @@
-"""LingJing AI backend package."""
+"""灵境智导后端包。"""
