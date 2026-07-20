@@ -126,7 +126,7 @@ onBeforeUnmount(() => {
 
     <header class="scenic-intro-brand" data-intro="brand">
       <span class="scenic-intro-mark">灵</span>
-      <span>LINGJING AI · 灵山胜境</span>
+      <span>灵境智导 · 灵山胜境</span>
     </header>
 
     <div class="scenic-intro-content" data-intro="content">

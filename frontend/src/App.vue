@@ -27,7 +27,7 @@ async function handleIntroComplete() {
       <RouterLink class="visitor-brand" to="/visitor/guide">
         <span class="visitor-brand-mark">灵</span>
         <span class="visitor-brand-copy">
-          <strong>LingJing AI</strong>
+          <strong>灵境智导</strong>
           <small>灵山胜境智慧游览</small>
         </span>
       </RouterLink>

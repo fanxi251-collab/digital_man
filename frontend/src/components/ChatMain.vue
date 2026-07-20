@@ -54,7 +54,7 @@ function submitQuestion() {
   <section class="chat-main" aria-label="景区 AI 导游问答">
     <header class="chat-topbar">
       <div class="chat-heading">
-        <p class="brand-mark">LingJing AI</p>
+        <p class="brand-mark">灵境智导</p>
         <h1>景区 AI 导游</h1>
         <span>让每一次出发，都更懂灵山</span>
       </div>
@@ -107,7 +107,7 @@ function submitQuestion() {
         v-model="question"
         name="question"
         rows="2"
-        placeholder="给 LingJing AI 发送消息，例如：给我推荐灵山胜境的游玩路线"
+        placeholder="给灵境智导发送消息，例如：给我推荐灵山胜境的游玩路线"
         :disabled="mode === 'avatar' && !avatarReady"
         @keydown.enter.exact.prevent="submitQuestion"
       ></textarea>
