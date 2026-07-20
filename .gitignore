@@ -22,3 +22,5 @@ frontend/dist/
 data/tourism_analytics_snapshot.json
 reports/qa_eval/
 .worktrees/
+# Keep exported competition images on disk without risking a 100+ MiB Git commit.
+*.tar

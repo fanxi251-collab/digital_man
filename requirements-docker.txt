@@ -1,0 +1,18 @@
+# These packages complete pyproject.toml's runtime set because the web entrypoint imports them directly.
+fastapi>=0.109,<1
+uvicorn[standard]>=0.27,<1
+python-multipart>=0.0.6,<1
+pydantic>=2,<3
+httpx>=0.28,<1
+qdrant-client>=1.18,<2
+
+# Keep optional integrations installable at runtime so one competition image can enable them via environment variables.
+langgraph>=0.4,<1
+neo4j>=6,<7
+openpyxl>=3.1,<4
+Pillow>=10,<12
+pypinyin>=0.52,<1
+PyYAML>=6,<7
+redis>=8,<9
+websockets>=16,<17
+

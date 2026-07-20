@@ -1,0 +1,43 @@
+# Exclude local tooling state because it is unrelated to runtime and greatly enlarges the build context.
+.git/
+.idea/
+.agents/
+.superpowers/
+.pytest_cache/
+.pytest_tmp*/
+**/__pycache__/
+**/*.py[cod]
+*.egg-info/
+
+# Never send developer secrets to the Docker daemon, even when a later COPY pattern changes.
+.env
+.env.*
+*.env
+config.yml
+config.local.yml
+
+# Rebuild the frontend inside Docker so host dependencies and stale artifacts cannot affect the image.
+frontend/node_modules/
+frontend/dist/
+frontend/data/
+frontend/qdrant_db/
+
+# Keep only the production data snapshot; probes, logs, reports, tests, and authoring assets are not runtime inputs.
+logs/
+reports/
+tests/
+evaluation/
+daily-modify/
+qdrant_probe/
+.qdrant_dim_probe/
+qdrant_db/.lock
+.tmp*/
+chitose_ja/
+koharu_haruto_ja/
+景点景区旅游数据行为分析数据.xlsx
+首页背景图.jpg
+
+# Prevent a previously exported competition image from recursively entering a future image build.
+*.tar
+*.tar.gz
+
