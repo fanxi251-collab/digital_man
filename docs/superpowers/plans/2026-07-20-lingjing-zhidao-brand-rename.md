@@ -32,7 +32,7 @@
 
 - [ ] **Step 1: 在游客端测试中写入失败契约**
 
-在 `tests/test_frontend.py` 的游客端品牌相关测试中加入：
+在 `tests/test_frontend.py` 新增 `test_current_visitor_brand_uses_lingjing_zhidao`：
 
 ```python
 app_shell_source = Path("frontend/src/App.vue").read_text(encoding="utf-8")
@@ -48,6 +48,11 @@ for source in (app_shell_source, chat_source, intro_source, index_source):
     assert "LINGJING AI" not in source
 
 assert "给灵境智导发送消息，例如：给我推荐灵山胜境的游玩路线" in chat_source
+```
+
+再新增 `test_brand_rename_preserves_internal_identifiers_and_updates_api_title`：
+
+```python
 assert 'title="灵境智导 RAG API"' in Path("src/lingjing_ai/api/app.py").read_text(encoding="utf-8")
 assert 'name = "lingjing-ai"' in Path("pyproject.toml").read_text(encoding="utf-8")
 assert 'const VISITOR_STORAGE_KEY = "lingjing_visitor_id"' in Path(
@@ -132,7 +137,7 @@ git commit -m "test: define Lingjing Zhidao brand contract"
 Run:
 
 ```powershell
-python -m pytest tests/test_frontend.py -q
+python -m pytest tests/test_frontend.py::test_current_visitor_brand_uses_lingjing_zhidao -q
 ```
 
 Expected: PASS。
