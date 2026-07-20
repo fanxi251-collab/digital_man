@@ -81,7 +81,9 @@ def test_all_admin_pages_share_sidebar_navigation(tmp_path: Path):
         page = request_path(app, path)
 
         assert page.status_code == 200
-        assert "LingJing AI" in page.text
+        assert "灵境智导" in page.text
+        assert "LingJing AI" not in page.text
+        assert "LingJing AI Admin" not in page.text
         assert 'class="admin-sidebar"' in page.text
         assert 'href="/admin/analytics"' in page.text
         assert 'href="/admin/attractions"' in page.text

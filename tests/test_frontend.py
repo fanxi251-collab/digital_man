@@ -41,6 +41,46 @@ def test_visitor_page_is_served_by_fastapi(tmp_path: Path):
     assert "Vue 游客端尚未构建" in response.text or "/assets/" in response.text
 
 
+def test_current_visitor_brand_uses_lingjing_zhidao():
+    sources = (
+        Path("frontend/src/App.vue").read_text(encoding="utf-8"),
+        Path("frontend/src/components/ChatMain.vue").read_text(encoding="utf-8"),
+        Path(
+            "frontend/src/features/scenic-intro/components/ScenicIntro.vue"
+        ).read_text(encoding="utf-8"),
+        Path("frontend/index.html").read_text(encoding="utf-8"),
+        Path("frontend/visitor.html").read_text(encoding="utf-8"),
+    )
+
+    for source in sources:
+        assert "灵境智导" in source
+        assert "LingJing AI" not in source
+        assert "LINGJING AI" not in source
+
+    chat_source = sources[1]
+    assert "给灵境智导发送消息，例如：给我推荐灵山胜境的游玩路线" in chat_source
+
+
+def test_brand_rename_preserves_internal_identifiers_and_updates_api_title():
+    app_source = Path("src/lingjing_ai/api/app.py").read_text(encoding="utf-8")
+    package_source = Path("pyproject.toml").read_text(encoding="utf-8")
+
+    assert 'title="灵境智导 RAG API"' in app_source
+    assert 'name = "lingjing-ai"' in package_source
+    assert 'const VISITOR_STORAGE_KEY = "lingjing_visitor_id"' in Path(
+        "frontend/src/lib/visitorIdentity.js"
+    ).read_text(encoding="utf-8")
+    assert '"lingjing_current_session_id"' in Path(
+        "frontend/src/composables/useSessions.js"
+    ).read_text(encoding="utf-8")
+    assert '"lingjing_digital_human_avatar"' in Path(
+        "frontend/src/features/digital-human/lib/live2dCharacters.js"
+    ).read_text(encoding="utf-8")
+    assert '"lingjing.guide.intro.seen.v1"' in Path(
+        "frontend/src/features/scenic-intro/lib/introPolicy.js"
+    ).read_text(encoding="utf-8")
+
+
 def test_vue_source_contains_required_visitor_layout_and_api_calls():
     app_source = Path("frontend/src/views/GuideView.vue").read_text(encoding="utf-8")
     chat_source = Path("frontend/src/components/ChatMain.vue").read_text(encoding="utf-8")
@@ -59,7 +99,7 @@ def test_vue_source_contains_required_visitor_layout_and_api_calls():
     assert "chat-main" in chat_source
     assert "session-sidebar" in session_source
     assert "history-drawer" in app_source
-    assert "给 LingJing AI 发送消息" in chat_source
+    assert "给灵境智导发送消息" in chat_source
     assert "常规模式" in chat_source
     assert "数字人模式" in chat_source
     assert "text.submit" in chat_composable
@@ -281,7 +321,7 @@ def test_digital_human_stage_uses_left_visual_and_latest_answer_panel():
     assert "transcript:" not in chat_source
     assert ':answer-text="chatApi.assistantTranscript.value"' in guide_source
     assert ':transcript="chatApi.avatarCaption.value"' not in guide_source
-    assert "给 LingJing AI 发送消息，例如：给我推荐灵山胜境的游玩路线" in chat_source
+    assert "给灵境智导发送消息，例如：给我推荐灵山胜境的游玩路线" in chat_source
     assert "灵山胜境适合老人怎么玩" not in chat_source
 
 
