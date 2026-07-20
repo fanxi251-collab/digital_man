@@ -369,7 +369,7 @@ def build_dataset() -> dict[str, Any]:
         "schema_version": "tourism_qa_eval_v1",
         "dataset_version": "1.0.0",
         "metadata": {
-            "title": "LingJing AI 全链路问答评测集",
+            "title": "灵境智导全链路问答评测集",
             "created_at": DATASET_CREATED_AT,
             "language": "zh-CN",
             "case_count": len(cases),

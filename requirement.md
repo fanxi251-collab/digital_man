@@ -1,4 +1,4 @@
-# LingJing_AI 项目环境要求
+# 灵境智导项目环境要求
 
 当前时间：2026-07-12  Asia/Shanghai
 

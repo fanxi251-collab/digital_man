@@ -2,7 +2,7 @@
   "schema_version": "tourism_qa_eval_v1",
   "dataset_version": "1.0.0",
   "metadata": {
-    "title": "LingJing AI 全链路问答评测集",
+    "title": "灵境智导全链路问答评测集",
     "created_at": "2026-07-15T00:00:00+08:00",
     "language": "zh-CN",
     "case_count": 120,

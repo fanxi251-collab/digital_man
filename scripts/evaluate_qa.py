@@ -20,7 +20,7 @@ DEFAULT_REPORT_DIR = PROJECT_ROOT / "reports" / "qa_eval"
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate and run the LingJing AI QA evaluation dataset.")
+    parser = argparse.ArgumentParser(description="Validate and run the 灵境智导 QA evaluation dataset.")
     parser.add_argument("--mode", choices=("validate", "offline", "benchmark", "smoke"), default="validate")
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_REPORT_DIR)

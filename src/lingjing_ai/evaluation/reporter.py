@@ -121,7 +121,7 @@ def write_report(report: dict[str, Any], output_dir: Path | str, *, create_basel
 def render_markdown(report: dict[str, Any]) -> str:
     summary = report["summary"]
     lines = [
-        "# LingJing AI 问答评测报告",
+        "# 灵境智导问答评测报告",
         "",
         f"- 模式：`{report['mode']}`",
         f"- 数据集版本：`{report['dataset']['dataset_version']}`",

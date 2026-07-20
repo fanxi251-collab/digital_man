@@ -2,7 +2,7 @@
 
 当前时间：2026-07-20  Asia/Shanghai
 
-本文档记录 LingJing_AI 当前目录职责。项目已整理为标准 Python `src` 包结构：根目录放工程资产，后端代码统一放入 `src/lingjing_ai/`。
+本文档记录灵境智导当前目录职责。项目已整理为标准 Python `src` 包结构：根目录放工程资产，后端代码统一放入 `src/lingjing_ai/`。
 
 ## 根目录
 
