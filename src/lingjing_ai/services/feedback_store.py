@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
-import sqlite3
 from typing import Any
 import uuid
+
+from psycopg.errors import UniqueViolation
+
+from lingjing_ai.storage.postgres import Row, execute_statements, fetchall, fetchone, schema_connection
 
 
 @dataclass(frozen=True)
@@ -24,15 +26,15 @@ class FeedbackRecord:
 
 
 class FeedbackStore:
-    def __init__(self, db_path: Path) -> None:
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, dsn: str, schema: str = "feedback") -> None:
+        self.dsn = dsn
+        self.schema = schema
         self._init_schema()
 
     def create_feedback(self, payload: dict[str, Any]) -> FeedbackRecord:
         values = _normalized_payload(payload)
         existing = self._fetchone(
-            "SELECT * FROM visitor_feedback WHERE visitor_id = ? AND request_id = ?",
+            "SELECT * FROM visitor_feedback WHERE visitor_id = %s AND request_id = %s",
             (values["visitor_id"], values["request_id"]),
         )
         if existing is not None:
@@ -41,13 +43,13 @@ class FeedbackStore:
         feedback_id = f"fb_{uuid.uuid4().hex}"
         now = _utc_now()
         try:
-            with self._connect() as conn:
+            with schema_connection(self.dsn, self.schema) as conn:
                 conn.execute(
                     """
                     INSERT INTO visitor_feedback (
                         feedback_id, visitor_id, request_id, rating, category, content,
                         contact, status, admin_reply, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', '', ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending', '', %s, %s)
                     """,
                     (
                         feedback_id,
@@ -61,10 +63,10 @@ class FeedbackStore:
                         now,
                     ),
                 )
-        except sqlite3.IntegrityError:
+        except UniqueViolation:
             # 唯一约束赢得并发竞争时读取胜者，让同时重试也获得同一反馈编号。
             winner = self._fetchone(
-                "SELECT * FROM visitor_feedback WHERE visitor_id = ? AND request_id = ?",
+                "SELECT * FROM visitor_feedback WHERE visitor_id = %s AND request_id = %s",
                 (values["visitor_id"], values["request_id"]),
             )
             if winner is None:
@@ -73,13 +75,13 @@ class FeedbackStore:
         return self.get_feedback(feedback_id)
 
     def get_feedback(self, feedback_id: str) -> FeedbackRecord | None:
-        row = self._fetchone("SELECT * FROM visitor_feedback WHERE feedback_id = ?", (feedback_id,))
+        row = self._fetchone("SELECT * FROM visitor_feedback WHERE feedback_id = %s", (feedback_id,))
         return _record_from_row(row) if row else None
 
     def list_for_visitor(self, visitor_id: str) -> list[FeedbackRecord]:
         rows = self._fetchall(
             """
-            SELECT * FROM visitor_feedback WHERE visitor_id = ?
+            SELECT * FROM visitor_feedback WHERE visitor_id = %s
             ORDER BY created_at DESC, feedback_id DESC
             """,
             (str(visitor_id).strip(),),
@@ -96,15 +98,15 @@ class FeedbackStore:
         conditions: list[str] = []
         params: list[Any] = []
         if q.strip():
-            conditions.append("(content LIKE ? OR contact LIKE ? OR feedback_id LIKE ?)")
+            conditions.append("(content LIKE %s OR contact LIKE %s OR feedback_id LIKE %s)")
             pattern = f"%{q.strip()}%"
             params.extend([pattern, pattern, pattern])
         for column, value in (("status", status), ("category", category)):
             if value.strip():
-                conditions.append(f"{column} = ?")
+                conditions.append(f"{column} = %s")
                 params.append(value.strip())
         if rating is not None:
-            conditions.append("rating = ?")
+            conditions.append("rating = %s")
             params.append(int(rating))
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         rows = self._fetchall(
@@ -114,20 +116,22 @@ class FeedbackStore:
         return [_record_from_row(row) for row in rows]
 
     def update_feedback(self, feedback_id: str, status: str, admin_reply: str) -> FeedbackRecord | None:
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             cursor = conn.execute(
                 """
-                UPDATE visitor_feedback SET status = ?, admin_reply = ?, updated_at = ?
-                WHERE feedback_id = ?
+                UPDATE visitor_feedback SET status = %s, admin_reply = %s, updated_at = %s
+                WHERE feedback_id = %s
                 """,
                 (str(status).strip(), str(admin_reply).strip(), _utc_now(), feedback_id),
             )
         return self.get_feedback(feedback_id) if cursor.rowcount else None
 
     def _init_schema(self) -> None:
-        with self._connect() as conn:
-            # 唯一索引在数据库层保证幂等，即使两个相同请求并发到达也只保留一条。
-            conn.executescript(
+        # 唯一索引在数据库层保证幂等，即使两个相同请求并发到达也只保留一条。
+        execute_statements(
+            self.dsn,
+            self.schema,
+            [
                 """
                 CREATE TABLE IF NOT EXISTS visitor_feedback (
                     feedback_id TEXT PRIMARY KEY,
@@ -142,26 +146,24 @@ class FeedbackStore:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     UNIQUE(visitor_id, request_id)
-                );
-                CREATE INDEX IF NOT EXISTS idx_feedback_admin_queue
-                    ON visitor_feedback(status, created_at DESC);
-                CREATE INDEX IF NOT EXISTS idx_feedback_visitor_history
-                    ON visitor_feedback(visitor_id, created_at DESC);
+                )
+                """,
                 """
-            )
+                CREATE INDEX IF NOT EXISTS idx_feedback_admin_queue
+                    ON visitor_feedback(status, created_at DESC)
+                """,
+                """
+                CREATE INDEX IF NOT EXISTS idx_feedback_visitor_history
+                    ON visitor_feedback(visitor_id, created_at DESC)
+                """,
+            ],
+        )
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def _fetchone(self, query: str, params: tuple[Any, ...]) -> Row | None:
+        return fetchone(self.dsn, self.schema, query, params)
 
-    def _fetchone(self, sql: str, params: tuple[Any, ...]) -> sqlite3.Row | None:
-        with self._connect() as conn:
-            return conn.execute(sql, params).fetchone()
-
-    def _fetchall(self, sql: str, params: tuple[Any, ...]) -> list[sqlite3.Row]:
-        with self._connect() as conn:
-            return list(conn.execute(sql, params).fetchall())
+    def _fetchall(self, query: str, params: tuple[Any, ...]) -> list[Row]:
+        return fetchall(self.dsn, self.schema, query, params)
 
 
 def _normalized_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -175,7 +177,7 @@ def _normalized_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _record_from_row(row: sqlite3.Row) -> FeedbackRecord:
+def _record_from_row(row: Row) -> FeedbackRecord:
     return FeedbackRecord(
         feedback_id=str(row["feedback_id"]),
         visitor_id=str(row["visitor_id"]),

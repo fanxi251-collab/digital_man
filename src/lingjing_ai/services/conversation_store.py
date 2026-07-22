@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
-from pathlib import Path
-import sqlite3
 import uuid
 from typing import Any
+
+from lingjing_ai.storage.postgres import Row, execute_statements, fetchall, fetchone, schema_connection
 
 
 MAX_TITLE_CHARS = 40
@@ -36,9 +36,9 @@ class StoredChatMessage:
 
 
 class ConversationStore:
-    def __init__(self, db_path: Path) -> None:
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, dsn: str, schema: str = "conversations") -> None:
+        self.dsn = dsn
+        self.schema = schema
         self._init_schema()
 
     def create_session(self, visitor_id: str, first_question: str) -> ConversationSessionRecord:
@@ -46,12 +46,12 @@ class ConversationStore:
         title = _title_from_question(first_question)
         now = _utc_now()
         session_id = f"sess_{uuid.uuid4().hex}"
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             conn.execute(
                 """
                 INSERT INTO conversation_sessions
                 (session_id, visitor_id, title, recent_question, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 (session_id, visitor_id, title, first_question.strip(), now, now),
             )
@@ -62,7 +62,7 @@ class ConversationStore:
             """
             SELECT session_id, visitor_id, title, recent_question, created_at, updated_at
             FROM conversation_sessions
-            WHERE session_id = ? AND visitor_id = ?
+            WHERE session_id = %s AND visitor_id = %s
             """,
             (session_id, _clean_id(visitor_id)),
         )
@@ -73,7 +73,7 @@ class ConversationStore:
             """
             SELECT session_id, visitor_id, title, recent_question, created_at, updated_at
             FROM conversation_sessions
-            WHERE visitor_id = ?
+            WHERE visitor_id = %s
             ORDER BY updated_at DESC
             """,
             (_clean_id(visitor_id),),
@@ -96,12 +96,13 @@ class ConversationStore:
         role = role if role in {"user", "assistant"} else "user"
         content = str(content or "")
         now = _utc_now()
-        with self._connect() as conn:
-            cursor = conn.execute(
+        with schema_connection(self.dsn, self.schema) as conn:
+            row = conn.execute(
                 """
                 INSERT INTO chat_messages
                 (session_id, visitor_id, role, content, trace_id, sources_json, tool_trace_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING message_id
                 """,
                 (
                     session_id,
@@ -113,17 +114,17 @@ class ConversationStore:
                     json.dumps(tool_trace or [], ensure_ascii=False),
                     now,
                 ),
-            )
+            ).fetchone()
             recent_question = content if role == "user" else session.recent_question
             conn.execute(
                 """
                 UPDATE conversation_sessions
-                SET recent_question = ?, updated_at = ?
-                WHERE session_id = ? AND visitor_id = ?
+                SET recent_question = %s, updated_at = %s
+                WHERE session_id = %s AND visitor_id = %s
                 """,
                 (recent_question, now, session_id, _clean_id(visitor_id)),
             )
-            message_id = int(cursor.lastrowid)
+            message_id = int(row["message_id"])
         return StoredChatMessage(
             message_id=message_id,
             session_id=session_id,
@@ -149,17 +150,18 @@ class ConversationStore:
     ) -> bool:
         normalized_visitor = _clean_id(visitor_id)
         now = _utc_now()
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             session = conn.execute(
-                "SELECT 1 FROM conversation_sessions WHERE session_id = ? AND visitor_id = ?",
+                "SELECT 1 FROM conversation_sessions WHERE session_id = %s AND visitor_id = %s",
                 (session_id, normalized_visitor),
             ).fetchone()
             if session is None:
                 return False
             marker = conn.execute(
                 """
-                INSERT OR IGNORE INTO completed_realtime_turns
-                (turn_id, session_id, visitor_id, created_at) VALUES (?, ?, ?, ?)
+                INSERT INTO completed_realtime_turns
+                (turn_id, session_id, visitor_id, created_at) VALUES (%s, %s, %s, %s)
+                ON CONFLICT (turn_id) DO NOTHING
                 """,
                 (turn_id, session_id, normalized_visitor, now),
             )
@@ -170,7 +172,7 @@ class ConversationStore:
                 """
                 INSERT INTO chat_messages
                 (session_id, visitor_id, role, content, trace_id, sources_json, tool_trace_json, created_at)
-                VALUES (?, ?, 'user', ?, '', '[]', '[]', ?)
+                VALUES (%s, %s, 'user', %s, '', '[]', '[]', %s)
                 """,
                 (session_id, normalized_visitor, question, now),
             )
@@ -178,7 +180,7 @@ class ConversationStore:
                 """
                 INSERT INTO chat_messages
                 (session_id, visitor_id, role, content, trace_id, sources_json, tool_trace_json, created_at)
-                VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?)
+                VALUES (%s, %s, 'assistant', %s, %s, %s, %s, %s)
                 """,
                 (
                     session_id,
@@ -193,8 +195,8 @@ class ConversationStore:
             conn.execute(
                 """
                 UPDATE conversation_sessions
-                SET recent_question = ?, updated_at = ?
-                WHERE session_id = ? AND visitor_id = ?
+                SET recent_question = %s, updated_at = %s
+                WHERE session_id = %s AND visitor_id = %s
                 """,
                 (question, now, session_id, normalized_visitor),
             )
@@ -208,7 +210,7 @@ class ConversationStore:
             SELECT message_id, session_id, visitor_id, role, content, trace_id,
                    sources_json, tool_trace_json, created_at
             FROM chat_messages
-            WHERE session_id = ? AND visitor_id = ?
+            WHERE session_id = %s AND visitor_id = %s
             ORDER BY message_id ASC
             """,
             (session_id, _clean_id(visitor_id)),
@@ -223,9 +225,9 @@ class ConversationStore:
             SELECT message_id, session_id, visitor_id, role, content, trace_id,
                    sources_json, tool_trace_json, created_at
             FROM chat_messages
-            WHERE session_id = ? AND visitor_id = ?
+            WHERE session_id = %s AND visitor_id = %s
             ORDER BY message_id DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (session_id, _clean_id(visitor_id), max(1, int(limit))),
         )
@@ -234,22 +236,30 @@ class ConversationStore:
     def delete_session(self, session_id: str, visitor_id: str) -> bool:
         if self.get_session(session_id, visitor_id) is None:
             return False
-        with self._connect() as conn:
+        normalized_visitor = _clean_id(visitor_id)
+        with schema_connection(self.dsn, self.schema) as conn:
+            # 先删除幂等标记，既完整擦除会话数据，也兼容尚未添加级联外键的已迁移表。
             conn.execute(
-                "DELETE FROM chat_messages WHERE session_id = ? AND visitor_id = ?",
-                (session_id, _clean_id(visitor_id)),
+                "DELETE FROM completed_realtime_turns WHERE session_id = %s AND visitor_id = %s",
+                (session_id, normalized_visitor),
+            )
+            conn.execute(
+                "DELETE FROM chat_messages WHERE session_id = %s AND visitor_id = %s",
+                (session_id, normalized_visitor),
             )
             cursor = conn.execute(
-                "DELETE FROM conversation_sessions WHERE session_id = ? AND visitor_id = ?",
-                (session_id, _clean_id(visitor_id)),
+                "DELETE FROM conversation_sessions WHERE session_id = %s AND visitor_id = %s",
+                (session_id, normalized_visitor),
             )
         return cursor.rowcount > 0
 
     def _init_schema(self) -> None:
-        with self._connect() as conn:
-            # These indexes keep anonymous history lookup bounded by visitor/session,
-            # because future游客量增长时不能靠全表扫描维持上下文体验。
-            conn.executescript(
+        # These indexes keep anonymous history lookup bounded by visitor/session,
+        # because future游客量增长时不能靠全表扫描维持上下文体验。
+        execute_statements(
+            self.dsn,
+            self.schema,
+            [
                 """
                 CREATE TABLE IF NOT EXISTS conversation_sessions (
                     session_id TEXT PRIMARY KEY,
@@ -258,10 +268,11 @@ class ConversationStore:
                     recent_question TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
-                );
-
+                )
+                """,
+                """
                 CREATE TABLE IF NOT EXISTS chat_messages (
-                    message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    message_id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                     session_id TEXT NOT NULL,
                     visitor_id TEXT NOT NULL,
                     role TEXT NOT NULL,
@@ -270,38 +281,37 @@ class ConversationStore:
                     sources_json TEXT NOT NULL DEFAULT '[]',
                     tool_trace_json TEXT NOT NULL DEFAULT '[]',
                     created_at TEXT NOT NULL,
-                    FOREIGN KEY(session_id) REFERENCES conversation_sessions(session_id)
-                );
-
+                    FOREIGN KEY(session_id) REFERENCES conversation_sessions(session_id) ON DELETE CASCADE
+                )
+                """,
+                """
                 CREATE INDEX IF NOT EXISTS idx_conversation_sessions_visitor_updated
-                    ON conversation_sessions(visitor_id, updated_at DESC);
+                    ON conversation_sessions(visitor_id, updated_at DESC)
+                """,
+                """
                 CREATE INDEX IF NOT EXISTS idx_chat_messages_session_visitor
-                    ON chat_messages(session_id, visitor_id, message_id);
-
+                    ON chat_messages(session_id, visitor_id, message_id)
+                """,
+                """
                 CREATE TABLE IF NOT EXISTS completed_realtime_turns (
                     turn_id TEXT PRIMARY KEY,
                     session_id TEXT NOT NULL,
                     visitor_id TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                );
-                """
-            )
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(session_id) REFERENCES conversation_sessions(session_id) ON DELETE CASCADE
+                )
+                """,
+            ],
+        )
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def _fetchone(self, query: str, params: tuple[Any, ...]) -> Row | None:
+        return fetchone(self.dsn, self.schema, query, params)
 
-    def _fetchone(self, sql: str, params: tuple[Any, ...]) -> sqlite3.Row | None:
-        with self._connect() as conn:
-            return conn.execute(sql, params).fetchone()
-
-    def _fetchall(self, sql: str, params: tuple[Any, ...]) -> list[sqlite3.Row]:
-        with self._connect() as conn:
-            return list(conn.execute(sql, params).fetchall())
+    def _fetchall(self, query: str, params: tuple[Any, ...]) -> list[Row]:
+        return fetchall(self.dsn, self.schema, query, params)
 
 
-def _session_from_row(row: sqlite3.Row) -> ConversationSessionRecord:
+def _session_from_row(row: Row) -> ConversationSessionRecord:
     return ConversationSessionRecord(
         session_id=str(row["session_id"]),
         visitor_id=str(row["visitor_id"]),
@@ -312,7 +322,7 @@ def _session_from_row(row: sqlite3.Row) -> ConversationSessionRecord:
     )
 
 
-def _message_from_row(row: sqlite3.Row) -> StoredChatMessage:
+def _message_from_row(row: Row) -> StoredChatMessage:
     return StoredChatMessage(
         message_id=int(row["message_id"]),
         session_id=str(row["session_id"]),

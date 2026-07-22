@@ -11,6 +11,7 @@ langgraph>=0.4,<1
 neo4j>=6,<7
 openpyxl>=3.1,<4
 Pillow>=10,<12
+psycopg[binary]>=3.2,<4
 pypinyin>=0.52,<1
 PyYAML>=6,<7
 redis>=8,<9

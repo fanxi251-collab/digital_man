@@ -5,9 +5,10 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import shutil
-import sqlite3
 from typing import Any
 import uuid
+
+from lingjing_ai.storage.postgres import Row, execute_statements, fetchall, fetchone, schema_connection
 
 
 PUBLIC_IMAGE_PREFIX = "/media/attractions/"
@@ -54,10 +55,16 @@ class AttractionRecord:
 
 
 class AttractionStore:
-    def __init__(self, db_path: Path, image_dir: Path, seed_on_empty: bool = True) -> None:
-        self.db_path = Path(db_path)
+    def __init__(
+        self,
+        dsn: str,
+        image_dir: Path,
+        seed_on_empty: bool = True,
+        schema: str = "attractions",
+    ) -> None:
+        self.dsn = dsn
+        self.schema = schema
         self.image_dir = Path(image_dir)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.image_dir.mkdir(parents=True, exist_ok=True)
         self._init_schema()
         if seed_on_empty and self._count_attractions() == 0:
@@ -69,14 +76,14 @@ class AttractionStore:
         attraction_id = f"attr_{uuid.uuid4().hex}"
         now = _utc_now()
         values = _normalized_payload(payload)
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             conn.execute(
                 """
                 INSERT INTO attractions (
                     attraction_id, name, summary, description, category, tags_json,
                     address, opening_hours, suggested_duration_minutes, longitude,
                     latitude, is_featured, sort_order, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     attraction_id,
@@ -103,15 +110,15 @@ class AttractionStore:
         if self.get_attraction(attraction_id) is None:
             return None
         values = _normalized_payload(payload)
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             conn.execute(
                 """
                 UPDATE attractions SET
-                    name = ?, summary = ?, description = ?, category = ?, tags_json = ?,
-                    address = ?, opening_hours = ?, suggested_duration_minutes = ?,
-                    longitude = ?, latitude = ?, is_featured = ?, sort_order = ?,
-                    status = ?, updated_at = ?
-                WHERE attraction_id = ?
+                    name = %s, summary = %s, description = %s, category = %s, tags_json = %s,
+                    address = %s, opening_hours = %s, suggested_duration_minutes = %s,
+                    longitude = %s, latitude = %s, is_featured = %s, sort_order = %s,
+                    status = %s, updated_at = %s
+                WHERE attraction_id = %s
                 """,
                 (
                     values["name"],
@@ -146,17 +153,17 @@ class AttractionStore:
         if public_only:
             conditions.append("status = 'published'")
         elif status:
-            conditions.append("status = ?")
+            conditions.append("status = %s")
             params.append(status)
         if q.strip():
-            conditions.append("(name LIKE ? OR summary LIKE ? OR tags_json LIKE ?)")
+            conditions.append("(name LIKE %s OR summary LIKE %s OR tags_json LIKE %s)")
             pattern = f"%{q.strip()}%"
             params.extend([pattern, pattern, pattern])
         if category.strip():
-            conditions.append("category = ?")
+            conditions.append("category = %s")
             params.append(category.strip())
         if featured is not None:
-            conditions.append("is_featured = ?")
+            conditions.append("is_featured = %s")
             params.append(int(featured))
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         rows = self._fetchall(
@@ -172,7 +179,7 @@ class AttractionStore:
     def get_attraction(self, attraction_id: str, public_only: bool = False) -> AttractionRecord | None:
         status_clause = " AND status = 'published'" if public_only else ""
         row = self._fetchone(
-            f"SELECT * FROM attractions WHERE attraction_id = ?{status_clause}",
+            f"SELECT * FROM attractions WHERE attraction_id = %s{status_clause}",
             (attraction_id,),
         )
         return self._record_from_row(row) if row else None
@@ -184,8 +191,8 @@ class AttractionStore:
         row = self._fetchone(
             """
             SELECT * FROM attractions
-            WHERE name = ? AND status = 'published'
-            ORDER BY updated_at DESC, created_at DESC, rowid DESC
+            WHERE name = %s AND status = 'published'
+            ORDER BY updated_at DESC, created_at DESC, attraction_id DESC
             LIMIT 1
             """,
             (normalized_name,),
@@ -194,9 +201,9 @@ class AttractionStore:
         return self._record_from_row(row) if row else None
 
     def archive_attraction(self, attraction_id: str) -> bool:
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             cursor = conn.execute(
-                "UPDATE attractions SET status = 'archived', updated_at = ? WHERE attraction_id = ?",
+                "UPDATE attractions SET status = 'archived', updated_at = %s WHERE attraction_id = %s",
                 (_utc_now(), attraction_id),
             )
         return cursor.rowcount > 0
@@ -212,18 +219,18 @@ class AttractionStore:
             return None
         image_id = f"img_{uuid.uuid4().hex}"
         now = _utc_now()
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             if is_cover:
                 # A景点只能有一个封面；先清除旧封面可避免游客端出现不确定的主图。
                 conn.execute(
-                    "UPDATE attraction_images SET is_cover = 0 WHERE attraction_id = ?",
+                    "UPDATE attraction_images SET is_cover = 0 WHERE attraction_id = %s",
                     (attraction_id,),
                 )
             conn.execute(
                 """
                 INSERT INTO attraction_images
                 (image_id, attraction_id, relative_path, is_cover, sort_order, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 (image_id, attraction_id, relative_path, int(is_cover), int(sort_order), now),
             )
@@ -231,15 +238,15 @@ class AttractionStore:
 
     def delete_image(self, attraction_id: str, image_id: str) -> AttractionImageRecord | None:
         row = self._fetchone(
-            "SELECT * FROM attraction_images WHERE attraction_id = ? AND image_id = ?",
+            "SELECT * FROM attraction_images WHERE attraction_id = %s AND image_id = %s",
             (attraction_id, image_id),
         )
         if row is None:
             return None
         image = _image_from_row(row)
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             conn.execute(
-                "DELETE FROM attraction_images WHERE attraction_id = ? AND image_id = ?",
+                "DELETE FROM attraction_images WHERE attraction_id = %s AND image_id = %s",
                 (attraction_id, image_id),
             )
         image_path = self.image_dir / image.relative_path
@@ -256,39 +263,39 @@ class AttractionStore:
         sort_order: int,
     ) -> AttractionImageRecord | None:
         row = self._fetchone(
-            "SELECT * FROM attraction_images WHERE attraction_id = ? AND image_id = ?",
+            "SELECT * FROM attraction_images WHERE attraction_id = %s AND image_id = %s",
             (attraction_id, image_id),
         )
         if row is None:
             return None
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             if is_cover:
                 # 先取消同景点其他封面，确保更新操作不会制造多封面歧义。
                 conn.execute(
-                    "UPDATE attraction_images SET is_cover = 0 WHERE attraction_id = ?",
+                    "UPDATE attraction_images SET is_cover = 0 WHERE attraction_id = %s",
                     (attraction_id,),
                 )
             conn.execute(
                 """
-                UPDATE attraction_images SET is_cover = ?, sort_order = ?
-                WHERE attraction_id = ? AND image_id = ?
+                UPDATE attraction_images SET is_cover = %s, sort_order = %s
+                WHERE attraction_id = %s AND image_id = %s
                 """,
                 (int(is_cover), int(sort_order), attraction_id, image_id),
             )
         updated = self._fetchone(
-            "SELECT * FROM attraction_images WHERE attraction_id = ? AND image_id = ?",
+            "SELECT * FROM attraction_images WHERE attraction_id = %s AND image_id = %s",
             (attraction_id, image_id),
         )
         return _image_from_row(updated) if updated else None
 
     def has_cover(self, attraction_id: str) -> bool:
         row = self._fetchone(
-            "SELECT 1 FROM attraction_images WHERE attraction_id = ? AND is_cover = 1 LIMIT 1",
+            "SELECT 1 AS present FROM attraction_images WHERE attraction_id = %s AND is_cover = 1 LIMIT 1",
             (attraction_id,),
         )
         return row is not None
 
-    def _record_from_row(self, row: sqlite3.Row) -> AttractionRecord:
+    def _record_from_row(self, row: Row) -> AttractionRecord:
         images = self._images_for_attraction(str(row["attraction_id"]))
         return AttractionRecord(
             attraction_id=str(row["attraction_id"]),
@@ -313,7 +320,7 @@ class AttractionStore:
     def _images_for_attraction(self, attraction_id: str) -> list[AttractionImageRecord]:
         rows = self._fetchall(
             """
-            SELECT * FROM attraction_images WHERE attraction_id = ?
+            SELECT * FROM attraction_images WHERE attraction_id = %s
             ORDER BY is_cover DESC, sort_order ASC, created_at ASC
             """,
             (attraction_id,),
@@ -321,11 +328,12 @@ class AttractionStore:
         return [_image_from_row(row) for row in rows]
 
     def _init_schema(self) -> None:
-        with self._connect() as conn:
-            # 索引围绕游客筛选和管理端状态查询建立，避免数据增长后全表扫描。
-            conn.executescript(
+        # 索引围绕游客筛选和管理端状态查询建立，避免数据增长后全表扫描。
+        execute_statements(
+            self.dsn,
+            self.schema,
+            [
                 """
-                PRAGMA foreign_keys = ON;
                 CREATE TABLE IF NOT EXISTS attractions (
                     attraction_id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -336,14 +344,16 @@ class AttractionStore:
                     address TEXT NOT NULL DEFAULT '',
                     opening_hours TEXT NOT NULL DEFAULT '',
                     suggested_duration_minutes INTEGER NOT NULL DEFAULT 0,
-                    longitude REAL NOT NULL,
-                    latitude REAL NOT NULL,
+                    longitude DOUBLE PRECISION NOT NULL,
+                    latitude DOUBLE PRECISION NOT NULL,
                     is_featured INTEGER NOT NULL DEFAULT 0,
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL DEFAULT 'draft',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
-                );
+                )
+                """,
+                """
                 CREATE TABLE IF NOT EXISTS attraction_images (
                     image_id TEXT PRIMARY KEY,
                     attraction_id TEXT NOT NULL,
@@ -352,13 +362,18 @@ class AttractionStore:
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(attraction_id) REFERENCES attractions(attraction_id)
-                );
-                CREATE INDEX IF NOT EXISTS idx_attractions_public_order
-                    ON attractions(status, is_featured DESC, sort_order ASC);
-                CREATE INDEX IF NOT EXISTS idx_attraction_images_owner_order
-                    ON attraction_images(attraction_id, is_cover DESC, sort_order ASC);
+                )
+                """,
                 """
-            )
+                CREATE INDEX IF NOT EXISTS idx_attractions_public_order
+                    ON attractions(status, is_featured DESC, sort_order ASC)
+                """,
+                """
+                CREATE INDEX IF NOT EXISTS idx_attraction_images_owner_order
+                    ON attraction_images(attraction_id, is_cover DESC, sort_order ASC)
+                """,
+            ],
+        )
 
     def _seed_demo_attractions(self) -> None:
         for index, payload in enumerate(_demo_payloads(), start=1):
@@ -382,8 +397,8 @@ class AttractionStore:
             filename = f"seed-{index}.webp"
             active_seed = self._fetchone(
                 """
-                SELECT 1 FROM attraction_images
-                WHERE relative_path = ? AND is_cover = 1
+                SELECT 1 AS present FROM attraction_images
+                WHERE relative_path = %s AND is_cover = 1
                 LIMIT 1
                 """,
                 (filename,),
@@ -398,18 +413,11 @@ class AttractionStore:
         row = self._fetchone("SELECT COUNT(*) AS count FROM attractions", ())
         return int(row["count"]) if row else 0
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def _fetchone(self, query: str, params: tuple[Any, ...]) -> Row | None:
+        return fetchone(self.dsn, self.schema, query, params)
 
-    def _fetchone(self, sql: str, params: tuple[Any, ...]) -> sqlite3.Row | None:
-        with self._connect() as conn:
-            return conn.execute(sql, params).fetchone()
-
-    def _fetchall(self, sql: str, params: tuple[Any, ...]) -> list[sqlite3.Row]:
-        with self._connect() as conn:
-            return list(conn.execute(sql, params).fetchall())
+    def _fetchall(self, query: str, params: tuple[Any, ...]) -> list[Row]:
+        return fetchall(self.dsn, self.schema, query, params)
 
 
 def _normalized_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -430,7 +438,7 @@ def _normalized_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _image_from_row(row: sqlite3.Row) -> AttractionImageRecord:
+def _image_from_row(row: Row) -> AttractionImageRecord:
     return AttractionImageRecord(
         image_id=str(row["image_id"]),
         attraction_id=str(row["attraction_id"]),

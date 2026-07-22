@@ -38,3 +38,15 @@ def test_conversation_store_isolates_visitors_and_deletes_single_session(pg_dsn:
     assert store.get_session(visitor_a_session.session_id, "visitor_a") is None
     assert store.recent_messages(visitor_a_session.session_id, "visitor_a") == []
     assert store.get_session(visitor_b_session.session_id, "visitor_b") is not None
+
+
+def test_delete_session_removes_realtime_turn_markers(pg_dsn: str, conversations_schema: str):
+    store = ConversationStore(pg_dsn, schema=conversations_schema)
+    original = store.create_session("visitor_a", "第一轮")
+    assert store.append_turn("turn_reusable", original.session_id, "visitor_a", "问题", "回答") is True
+
+    assert store.delete_session(original.session_id, "visitor_a") is True
+
+    replacement = store.create_session("visitor_a", "新会话")
+    # 删除会话也必须清理幂等标记，否则历史删除不完整且轮次标识会被永久占用。
+    assert store.append_turn("turn_reusable", replacement.session_id, "visitor_a", "新问题", "新回答") is True

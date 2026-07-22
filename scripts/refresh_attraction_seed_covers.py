@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""把仓库内 seed 封面同步到本机已有景点（无需删除 attractions.db）。
+"""把仓库内 seed 封面同步到本机已有景点（无需清空 PostgreSQL attractions schema）。
 
 适用：同事拉取了更新后的 src/lingjing_ai/assets/attractions/seed-*.webp，
 但本地早已启动过，库里不是空库，默认不会重新播种。
@@ -31,9 +31,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     workspace = args.workspace.resolve()
-    db_path = workspace / "data" / "attractions.db"
+    from lingjing_ai.config.settings import AppSettings
+
+    settings = AppSettings.for_workspace(workspace)
     image_dir = workspace / "data" / "attraction_images"
-    store = AttractionStore(db_path, image_dir, seed_on_empty=False)
+    store = AttractionStore(
+        settings.database_url,
+        image_dir,
+        seed_on_empty=False,
+        schema=f"{settings.database_schema_prefix}attractions",
+    )
 
     seed_dir = _seed_asset_dir()
     payloads = _demo_payloads()

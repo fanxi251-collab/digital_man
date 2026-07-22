@@ -5,9 +5,10 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import shutil
-import sqlite3
 from typing import Any
 import uuid
+
+from lingjing_ai.storage.postgres import Row, execute_statements, fetchall, fetchone, schema_connection
 
 
 PUBLIC_IMAGE_PREFIX = "/media/foods/"
@@ -59,10 +60,16 @@ class FoodRecord:
 
 
 class FoodStore:
-    def __init__(self, db_path: Path, image_dir: Path, seed_on_empty: bool = True) -> None:
-        self.db_path = Path(db_path)
+    def __init__(
+        self,
+        dsn: str,
+        image_dir: Path,
+        seed_on_empty: bool = True,
+        schema: str = "foods",
+    ) -> None:
+        self.dsn = dsn
+        self.schema = schema
         self.image_dir = Path(image_dir)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.image_dir.mkdir(parents=True, exist_ok=True)
         self._init_schema()
         if seed_on_empty and self._count_foods() == 0:
@@ -74,7 +81,7 @@ class FoodStore:
         food_id = f"food_{uuid.uuid4().hex}"
         now = _utc_now()
         values = _normalized_payload(payload)
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             conn.execute(
                 """
                 INSERT INTO foods (
@@ -83,7 +90,7 @@ class FoodStore:
                     vegetarian_friendly, address, opening_hours, longitude, latitude,
                     source_url, verified_at, is_featured, sort_order, status,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 _food_values(food_id, values, now, now),
             )
@@ -93,16 +100,16 @@ class FoodStore:
         if self.get_food(food_id) is None:
             return None
         values = _normalized_payload(payload)
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             conn.execute(
                 """
                 UPDATE foods SET
-                    name = ?, summary = ?, description = ?, scope = ?, category = ?,
-                    taste_tags_json = ?, signature_dishes_json = ?, price_level = ?,
-                    vegetarian_friendly = ?, address = ?, opening_hours = ?,
-                    longitude = ?, latitude = ?, source_url = ?, verified_at = ?,
-                    is_featured = ?, sort_order = ?, status = ?, updated_at = ?
-                WHERE food_id = ?
+                    name = %s, summary = %s, description = %s, scope = %s, category = %s,
+                    taste_tags_json = %s, signature_dishes_json = %s, price_level = %s,
+                    vegetarian_friendly = %s, address = %s, opening_hours = %s,
+                    longitude = %s, latitude = %s, source_url = %s, verified_at = %s,
+                    is_featured = %s, sort_order = %s, status = %s, updated_at = %s
+                WHERE food_id = %s
                 """,
                 _food_update_values(values, _utc_now(), food_id),
             )
@@ -125,29 +132,29 @@ class FoodStore:
         if public_only:
             conditions.append("status = 'published'")
         elif status:
-            conditions.append("status = ?")
+            conditions.append("status = %s")
             params.append(status)
         if q.strip():
             pattern = f"%{q.strip()}%"
             conditions.append(
-                "(name LIKE ? OR summary LIKE ? OR taste_tags_json LIKE ? OR signature_dishes_json LIKE ?)"
+                "(name LIKE %s OR summary LIKE %s OR taste_tags_json LIKE %s OR signature_dishes_json LIKE %s)"
             )
             params.extend([pattern, pattern, pattern, pattern])
         for column, value in (("scope", scope), ("category", category)):
             if value.strip():
-                conditions.append(f"{column} = ?")
+                conditions.append(f"{column} = %s")
                 params.append(value.strip())
         if taste.strip():
-            conditions.append("taste_tags_json LIKE ?")
+            conditions.append("taste_tags_json LIKE %s")
             params.append(f"%{taste.strip()}%")
         if price_level is not None:
-            conditions.append("price_level = ?")
+            conditions.append("price_level = %s")
             params.append(int(price_level))
         if vegetarian is not None:
-            conditions.append("vegetarian_friendly = ?")
+            conditions.append("vegetarian_friendly = %s")
             params.append(int(vegetarian))
         if featured is not None:
-            conditions.append("is_featured = ?")
+            conditions.append("is_featured = %s")
             params.append(int(featured))
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         rows = self._fetchall(
@@ -163,15 +170,15 @@ class FoodStore:
     def get_food(self, food_id: str, public_only: bool = False) -> FoodRecord | None:
         status_clause = " AND status = 'published'" if public_only else ""
         row = self._fetchone(
-            f"SELECT * FROM foods WHERE food_id = ?{status_clause}",
+            f"SELECT * FROM foods WHERE food_id = %s{status_clause}",
             (food_id,),
         )
         return self._record_from_row(row) if row else None
 
     def archive_food(self, food_id: str) -> bool:
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             cursor = conn.execute(
-                "UPDATE foods SET status = 'archived', updated_at = ? WHERE food_id = ?",
+                "UPDATE foods SET status = 'archived', updated_at = %s WHERE food_id = %s",
                 (_utc_now(), food_id),
             )
         return cursor.rowcount > 0
@@ -187,15 +194,15 @@ class FoodStore:
             return None
         image_id = f"food_img_{uuid.uuid4().hex}"
         now = _utc_now()
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             if is_cover:
                 # 每个餐饮地点只保留一个封面，避免游客卡片主图不确定。
-                conn.execute("UPDATE food_images SET is_cover = 0 WHERE food_id = ?", (food_id,))
+                conn.execute("UPDATE food_images SET is_cover = 0 WHERE food_id = %s", (food_id,))
             conn.execute(
                 """
                 INSERT INTO food_images
                 (image_id, food_id, relative_path, is_cover, sort_order, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 (image_id, food_id, relative_path, int(is_cover), int(sort_order), now),
             )
@@ -209,38 +216,38 @@ class FoodStore:
         sort_order: int,
     ) -> FoodImageRecord | None:
         row = self._fetchone(
-            "SELECT * FROM food_images WHERE food_id = ? AND image_id = ?",
+            "SELECT * FROM food_images WHERE food_id = %s AND image_id = %s",
             (food_id, image_id),
         )
         if row is None:
             return None
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             if is_cover:
-                conn.execute("UPDATE food_images SET is_cover = 0 WHERE food_id = ?", (food_id,))
+                conn.execute("UPDATE food_images SET is_cover = 0 WHERE food_id = %s", (food_id,))
             conn.execute(
                 """
-                UPDATE food_images SET is_cover = ?, sort_order = ?
-                WHERE food_id = ? AND image_id = ?
+                UPDATE food_images SET is_cover = %s, sort_order = %s
+                WHERE food_id = %s AND image_id = %s
                 """,
                 (int(is_cover), int(sort_order), food_id, image_id),
             )
         updated = self._fetchone(
-            "SELECT * FROM food_images WHERE food_id = ? AND image_id = ?",
+            "SELECT * FROM food_images WHERE food_id = %s AND image_id = %s",
             (food_id, image_id),
         )
         return _image_from_row(updated) if updated else None
 
     def delete_image(self, food_id: str, image_id: str) -> FoodImageRecord | None:
         row = self._fetchone(
-            "SELECT * FROM food_images WHERE food_id = ? AND image_id = ?",
+            "SELECT * FROM food_images WHERE food_id = %s AND image_id = %s",
             (food_id, image_id),
         )
         if row is None:
             return None
         image = _image_from_row(row)
-        with self._connect() as conn:
+        with schema_connection(self.dsn, self.schema) as conn:
             conn.execute(
-                "DELETE FROM food_images WHERE food_id = ? AND image_id = ?",
+                "DELETE FROM food_images WHERE food_id = %s AND image_id = %s",
                 (food_id, image_id),
             )
         image_path = self.image_dir / image.relative_path
@@ -251,12 +258,12 @@ class FoodStore:
 
     def has_cover(self, food_id: str) -> bool:
         row = self._fetchone(
-            "SELECT 1 FROM food_images WHERE food_id = ? AND is_cover = 1 LIMIT 1",
+            "SELECT 1 AS present FROM food_images WHERE food_id = %s AND is_cover = 1 LIMIT 1",
             (food_id,),
         )
         return row is not None
 
-    def _record_from_row(self, row: sqlite3.Row) -> FoodRecord:
+    def _record_from_row(self, row: Row) -> FoodRecord:
         food_id = str(row["food_id"])
         return FoodRecord(
             food_id=food_id,
@@ -286,7 +293,7 @@ class FoodStore:
     def _images_for_food(self, food_id: str) -> list[FoodImageRecord]:
         rows = self._fetchall(
             """
-            SELECT * FROM food_images WHERE food_id = ?
+            SELECT * FROM food_images WHERE food_id = %s
             ORDER BY is_cover DESC, sort_order ASC, created_at ASC
             """,
             (food_id,),
@@ -294,11 +301,12 @@ class FoodStore:
         return [_image_from_row(row) for row in rows]
 
     def _init_schema(self) -> None:
-        with self._connect() as conn:
-            # 索引围绕游客筛选与管理状态建立，使内容增长后仍保持即时筛选。
-            conn.executescript(
+        # 索引围绕游客筛选与管理状态建立，使内容增长后仍保持即时筛选。
+        execute_statements(
+            self.dsn,
+            self.schema,
+            [
                 """
-                PRAGMA foreign_keys = ON;
                 CREATE TABLE IF NOT EXISTS foods (
                     food_id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -312,8 +320,8 @@ class FoodStore:
                     vegetarian_friendly INTEGER NOT NULL DEFAULT 0,
                     address TEXT NOT NULL,
                     opening_hours TEXT NOT NULL,
-                    longitude REAL NOT NULL,
-                    latitude REAL NOT NULL,
+                    longitude DOUBLE PRECISION NOT NULL,
+                    latitude DOUBLE PRECISION NOT NULL,
                     source_url TEXT NOT NULL DEFAULT '',
                     verified_at TEXT NOT NULL DEFAULT '',
                     is_featured INTEGER NOT NULL DEFAULT 0,
@@ -321,7 +329,9 @@ class FoodStore:
                     status TEXT NOT NULL DEFAULT 'draft',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
-                );
+                )
+                """,
+                """
                 CREATE TABLE IF NOT EXISTS food_images (
                     image_id TEXT PRIMARY KEY,
                     food_id TEXT NOT NULL,
@@ -330,13 +340,18 @@ class FoodStore:
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(food_id) REFERENCES foods(food_id)
-                );
-                CREATE INDEX IF NOT EXISTS idx_foods_public_order
-                    ON foods(status, is_featured DESC, sort_order ASC);
-                CREATE INDEX IF NOT EXISTS idx_food_images_owner_order
-                    ON food_images(food_id, is_cover DESC, sort_order ASC);
+                )
+                """,
                 """
-            )
+                CREATE INDEX IF NOT EXISTS idx_foods_public_order
+                    ON foods(status, is_featured DESC, sort_order ASC)
+                """,
+                """
+                CREATE INDEX IF NOT EXISTS idx_food_images_owner_order
+                    ON food_images(food_id, is_cover DESC, sort_order ASC)
+                """,
+            ],
+        )
 
     def _seed_foods(self) -> None:
         for index, payload in enumerate(_seed_payloads(), start=1):
@@ -354,7 +369,7 @@ class FoodStore:
         for index in range(1, len(_seed_payloads()) + 1):
             filename = f"seed-{index}.webp"
             active = self._fetchone(
-                "SELECT 1 FROM food_images WHERE relative_path = ? AND is_cover = 1 LIMIT 1",
+                "SELECT 1 AS present FROM food_images WHERE relative_path = %s AND is_cover = 1 LIMIT 1",
                 (filename,),
             )
             source = _seed_asset_dir() / filename
@@ -365,18 +380,11 @@ class FoodStore:
         row = self._fetchone("SELECT COUNT(*) AS count FROM foods", ())
         return int(row["count"]) if row else 0
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def _fetchone(self, query: str, params: tuple[Any, ...]) -> Row | None:
+        return fetchone(self.dsn, self.schema, query, params)
 
-    def _fetchone(self, sql: str, params: tuple[Any, ...]) -> sqlite3.Row | None:
-        with self._connect() as conn:
-            return conn.execute(sql, params).fetchone()
-
-    def _fetchall(self, sql: str, params: tuple[Any, ...]) -> list[sqlite3.Row]:
-        with self._connect() as conn:
-            return list(conn.execute(sql, params).fetchall())
+    def _fetchall(self, query: str, params: tuple[Any, ...]) -> list[Row]:
+        return fetchall(self.dsn, self.schema, query, params)
 
 
 def _food_values(food_id: str, values: dict[str, Any], created_at: str, updated_at: str) -> tuple[Any, ...]:
@@ -419,7 +427,7 @@ def _normalized_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _image_from_row(row: sqlite3.Row) -> FoodImageRecord:
+def _image_from_row(row: Row) -> FoodImageRecord:
     return FoodImageRecord(
         image_id=str(row["image_id"]),
         food_id=str(row["food_id"]),
@@ -472,4 +480,3 @@ def _seed_payloads() -> list[dict[str, Any]]:
         for index, (name, scope, category, tastes, dishes, price, vegetarian, address, longitude, latitude, source_url)
         in enumerate(entries, start=1)
     ]
-

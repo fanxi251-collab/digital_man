@@ -9,6 +9,7 @@ description = "灵境智导景区 RAG 与智能体后端"
 requires-python = ">=3.10"
 dependencies = [
     "openpyxl>=3.1,<4",
+    "psycopg[binary]>=3.2,<4",
     "pypinyin>=0.52,<1",
     "PyYAML>=6,<7",
     "redis>=8.0,<9",
