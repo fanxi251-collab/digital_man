@@ -770,7 +770,7 @@ class VisitorRealtimeSession:
             return
         await self._delete_turn_items(pending)
         try:
-            # Reinsert the complete local pair so later upstream turns see the same history as SQLite.
+            # Reinsert the complete pair so upstream context matches the turn persisted in PostgreSQL.
             await self.qwen.inject_message("user", pending.prepared.question)
             await self.qwen.inject_message("assistant", answer)
         except Exception:

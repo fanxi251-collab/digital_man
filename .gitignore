@@ -12,7 +12,6 @@ qdrant_probe/
 .qdrant_dim_probe/
 data/uploaded/
 data/processed/
-data/*.db
 data/attraction_images/
 data/food_images/
 .tmp-food-downloads/

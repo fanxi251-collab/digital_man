@@ -1,6 +1,6 @@
 # 景点种子封面图
 
-供首次启动 `AttractionStore` **仅在空库时**播种（复制到运行时目录 `data/attraction_images/`）。
+供首次启动 `AttractionStore` **仅在 PostgreSQL 景点表为空时**播种（复制到运行时目录 `data/attraction_images/`）。
 
 | 文件 | 景点 |
 |------|------|
@@ -36,15 +36,9 @@ python scripts/refresh_attraction_seed_covers.py --workspace .
 
 该命令会把八个默认景点的当前封面恢复为仓库 seed，但保留景点数据和其他相册图片。
 
-### 备选做法（整库重置）
+### 演示数据重置
 
-仅在本地演示数据可以丢掉时：
-
-```bash
-rm -f data/attractions.db
-rm -rf data/attraction_images
-# 再启动 uvicorn，空库会重新播种
-```
+景点关系数据位于 PostgreSQL `attractions` schema。重置前必须先执行 `pg_dump`，并在停止应用后由数据库管理员清空明确的景点表；应用再次启动时会为空表重新播种。图片文件仍保存在 `data/attraction_images/`，不会因数据库表重置而自动删除。
 
 ## 哪些目录不要提交 Git
 
@@ -52,5 +46,5 @@ rm -rf data/attraction_images
 |------|------|
 | `src/lingjing_ai/assets/attractions/` | **要提交**（种子图） |
 | `data/attraction_images/` | 运行时，已 gitignore |
-| `data/attractions.db` | 运行时，已 gitignore |
+| PostgreSQL `attractions` schema | 运行时关系数据，通过 `DATABASE_URL` 访问 |
 | `frontend/data/` | 不是景点封面目录 |
