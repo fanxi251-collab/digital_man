@@ -3,7 +3,16 @@
 from lingjing_ai.config.settings import AppSettings
 
 
+def test_database_url_has_no_hardcoded_default(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    settings = AppSettings.for_workspace(tmp_path)
+
+    assert settings.database_url == ""
+
+
 def test_settings_reads_qwen_api_configuration_from_environment(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://db.example/lingjing")
     monkeypatch.setenv("LJAPI_KEY", "test-key")
     monkeypatch.setenv("LJ_LLM_MODEL", "qwen3.7-max")
     monkeypatch.setenv("LJ_EMBEDDING_PROVIDER", "aliyun")
@@ -46,6 +55,7 @@ def test_settings_reads_qwen_api_configuration_from_environment(tmp_path: Path, 
     assert settings.enable_section_aware_chunking is True
     assert settings.kg_enabled is False
     assert settings.neo4j_database == "neo4j"
+    assert settings.database_url == "postgresql://db.example/lingjing"
     assert settings.question_expansion_enabled is True
     assert settings.question_expansion_model == "qwen3.7-plus"
     assert settings.question_expansion_max_candidates == 8

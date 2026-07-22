@@ -1,10 +1,12 @@
-from pathlib import Path
+import pytest
+
+pytestmark = pytest.mark.usefixtures("postgres_test_context")
 
 from lingjing_ai.services.feedback_store import FeedbackStore
 
 
-def test_feedback_store_is_idempotent_and_isolates_visitors(tmp_path: Path):
-    store = FeedbackStore(tmp_path / "feedback.db")
+def test_feedback_store_is_idempotent_and_isolates_visitors(pg_dsn: str, feedback_schema: str):
+    store = FeedbackStore(pg_dsn, schema=feedback_schema)
     payload = {
         "visitor_id": "visitor_alpha",
         "request_id": "request_1",
@@ -23,8 +25,8 @@ def test_feedback_store_is_idempotent_and_isolates_visitors(tmp_path: Path):
     assert store.list_for_visitor("visitor_unknown") == []
 
 
-def test_feedback_store_filters_and_updates_processing_reply(tmp_path: Path):
-    store = FeedbackStore(tmp_path / "feedback.db")
+def test_feedback_store_filters_and_updates_processing_reply(pg_dsn: str, feedback_schema: str):
+    store = FeedbackStore(pg_dsn, schema=feedback_schema)
     created = store.create_feedback(
         {
             "visitor_id": "visitor_alpha",
@@ -44,4 +46,3 @@ def test_feedback_store_filters_and_updates_processing_reply(tmp_path: Path):
     assert updated.admin_reply == "已安排现场核查。"
     assert [item.feedback_id for item in filtered] == [created.feedback_id]
     assert filtered[0].contact == "13800000000"
-

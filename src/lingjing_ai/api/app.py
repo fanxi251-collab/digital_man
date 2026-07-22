@@ -217,22 +217,31 @@ def create_app(
         visitor_digital_human_dir = frontend_dir / "public" / "digital-human"
     static_dir = frontend_dir / "static"
     attraction_image_dir = pipeline.settings.data_dir / "attraction_images"
+    database_url = pipeline.settings.database_url.strip()
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is required for PostgreSQL storage")
+    schema_prefix = pipeline.settings.database_schema_prefix
     attraction_store = AttractionStore(
-        pipeline.settings.data_dir / "attractions.db",
+        database_url,
         attraction_image_dir,
         seed_on_empty=seed_attractions,
+        schema=f"{schema_prefix}attractions",
     )
     food_image_dir = pipeline.settings.data_dir / "food_images"
     food_store = FoodStore(
-        pipeline.settings.data_dir / "foods.db",
+        database_url,
         food_image_dir,
         seed_on_empty=seed_foods,
+        schema=f"{schema_prefix}foods",
     )
-    feedback_store = FeedbackStore(pipeline.settings.data_dir / "feedback.db")
+    feedback_store = FeedbackStore(database_url, schema=f"{schema_prefix}feedback")
     route_scope = _build_scenic_navigation_scope(pipeline, attraction_store)
     agent_executor = _build_agent_executor(pipeline, attraction_store, route_scope)
     question_expander = _build_question_expander(pipeline)
-    conversation_store = ConversationStore(pipeline.settings.data_dir / "conversations.db")
+    conversation_store = ConversationStore(
+        database_url,
+        schema=f"{schema_prefix}conversations",
+    )
     glossary_path = Path(pipeline.settings.asr_glossary_path)
     if not glossary_path.is_absolute():
         glossary_path = pipeline.settings.workspace_dir / glossary_path

@@ -1,5 +1,9 @@
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("postgres_test_context")
+
 from lingjing_ai.services.food_store import FoodStore
 
 
@@ -26,8 +30,8 @@ def food_payload(name: str = "灵山蔬食馆", status: str = "published") -> di
     }
 
 
-def test_food_store_crud_filters_and_archive(tmp_path: Path):
-    store = FoodStore(tmp_path / "foods.db", tmp_path / "images", seed_on_empty=False)
+def test_food_store_crud_filters_and_archive(pg_dsn: str, foods_schema: str, tmp_path: Path):
+    store = FoodStore(pg_dsn, tmp_path / "images", seed_on_empty=False, schema=foods_schema)
     created = store.create_food(food_payload())
     store.create_food({**food_payload("太湖渔村", "draft"), "scope": "nearby"})
 
@@ -50,9 +54,11 @@ def test_food_store_crud_filters_and_archive(tmp_path: Path):
     assert store.list_foods(public_only=True) == []
 
 
-def test_food_store_manages_one_cover_and_deletes_only_requested_image(tmp_path: Path):
+def test_food_store_manages_one_cover_and_deletes_only_requested_image(
+    pg_dsn: str, foods_schema: str, tmp_path: Path
+):
     image_dir = tmp_path / "images"
-    store = FoodStore(tmp_path / "foods.db", image_dir, seed_on_empty=False)
+    store = FoodStore(pg_dsn, image_dir, seed_on_empty=False, schema=foods_schema)
     food = store.create_food(food_payload(status="draft"))
     first_path = image_dir / "first.webp"
     second_path = image_dir / "second.webp"
@@ -72,8 +78,10 @@ def test_food_store_manages_one_cover_and_deletes_only_requested_image(tmp_path:
     assert second_path.exists() is True
 
 
-def test_empty_food_store_seeds_six_published_recommendations_with_covers(tmp_path: Path):
-    store = FoodStore(tmp_path / "foods.db", tmp_path / "images")
+def test_empty_food_store_seeds_six_published_recommendations_with_covers(
+    pg_dsn: str, foods_schema: str, tmp_path: Path
+):
+    store = FoodStore(pg_dsn, tmp_path / "images", schema=foods_schema)
 
     seeded = store.list_foods(public_only=True)
 

@@ -5,6 +5,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+pytestmark = pytest.mark.usefixtures("postgres_test_context")
+
 from lingjing_ai.api.app import create_app
 from lingjing_ai.config.settings import AppSettings
 from lingjing_ai.rag.embeddings import HashingEmbeddingProvider

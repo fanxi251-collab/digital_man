@@ -83,6 +83,8 @@ class AppSettings:
     neo4j_user: str = ""
     neo4j_password: str = ""
     neo4j_database: str = "neo4j"
+    database_url: str = ""
+    database_schema_prefix: str = ""
     kg_schema_version: str = "scenic_v1"
     kg_max_relations_per_chunk: int = 8
     kg_enable_route_relations: bool = True
@@ -196,6 +198,8 @@ class AppSettings:
             neo4j_user=_env_value("NEO4J_USER", workspace_env, "").strip(),
             neo4j_password=_env_value("NEO4J_PASSWORD", workspace_env, "").strip(),
             neo4j_database=_env_value("NEO4J_DATABASE", workspace_env, "neo4j").strip() or "neo4j",
+            database_url=(_env_value("DATABASE_URL", workspace_env, "") or "").strip(),
+            database_schema_prefix=_env_value("DATABASE_SCHEMA_PREFIX", workspace_env, "").strip() or "",
             kg_schema_version=_env_value("KG_SCHEMA_VERSION", workspace_env, "scenic_v1").strip() or "scenic_v1",
             kg_max_relations_per_chunk=int(_env_value("KG_MAX_RELATIONS_PER_CHUNK", workspace_env, "8")),
             kg_enable_route_relations=_env_bool("KG_ENABLE_ROUTE_RELATIONS", workspace_env, True),

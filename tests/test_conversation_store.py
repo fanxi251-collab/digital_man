@@ -1,10 +1,12 @@
-from pathlib import Path
+import pytest
+
+pytestmark = pytest.mark.usefixtures("postgres_test_context")
 
 from lingjing_ai.services.conversation_store import ConversationStore
 
 
-def test_conversation_store_creates_session_and_reads_recent_messages(tmp_path: Path):
-    store = ConversationStore(tmp_path / "conversations.db")
+def test_conversation_store_creates_session_and_reads_recent_messages(pg_dsn: str, conversations_schema: str):
+    store = ConversationStore(pg_dsn, schema=conversations_schema)
 
     session = store.create_session("visitor_a", "灵山胜境有什么特色？")
     store.append_message(session.session_id, "visitor_a", "user", "灵山胜境有什么特色？")
@@ -20,8 +22,8 @@ def test_conversation_store_creates_session_and_reads_recent_messages(tmp_path: 
     assert messages[1].content == "灵山胜境以灵山大佛闻名。"
 
 
-def test_conversation_store_isolates_visitors_and_deletes_single_session(tmp_path: Path):
-    store = ConversationStore(tmp_path / "conversations.db")
+def test_conversation_store_isolates_visitors_and_deletes_single_session(pg_dsn: str, conversations_schema: str):
+    store = ConversationStore(pg_dsn, schema=conversations_schema)
     visitor_a_session = store.create_session("visitor_a", "灵山胜境")
     visitor_b_session = store.create_session("visitor_b", "拈花湾")
     store.append_message(visitor_a_session.session_id, "visitor_a", "user", "灵山胜境怎么玩？")

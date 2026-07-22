@@ -5,6 +5,8 @@ import asyncio
 import httpx
 import pytest
 
+pytestmark = pytest.mark.usefixtures("postgres_test_context")
+
 from lingjing_ai.agent.executor import AgentExecutor
 from lingjing_ai.agent.models import ToolResult
 from lingjing_ai.api.app import _build_agent_executor, create_app

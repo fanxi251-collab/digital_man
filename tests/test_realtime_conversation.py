@@ -4,6 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("postgres_test_context")
+
 from lingjing_ai.agent.executor import AgentExecutor
 from lingjing_ai.agent.models import AgentEvidence, ToolTrace
 from lingjing_ai.config.settings import AppSettings
@@ -48,18 +50,20 @@ class PipelineBackedNoopTool:
         raise AssertionError(f"路线快速路径不应调用RAG：{question}")
 
 
-def build_service(tmp_path: Path):
+def build_service(tmp_path: Path, pg_dsn: str, conversations_schema: str):
     settings = replace(
         AppSettings.for_workspace(tmp_path),
         question_expansion_enabled=False,
     )
-    store = ConversationStore(tmp_path / "conversations.db")
+    store = ConversationStore(pg_dsn, schema=conversations_schema)
     agent = FakeAgentExecutor()
     return RealtimeConversationService(settings, store, agent), store, agent
 
 
-def test_prepare_turn_creates_session_and_formats_temporary_evidence(tmp_path: Path):
-    service, store, _ = build_service(tmp_path)
+def test_prepare_turn_creates_session_and_formats_temporary_evidence(
+    tmp_path: Path, pg_dsn: str, conversations_schema: str
+):
+    service, store, _ = build_service(tmp_path, pg_dsn, conversations_schema)
 
     prepared = service.prepare_turn("灵山胜境几点开放？", "visitor_a", "")
 
@@ -70,8 +74,8 @@ def test_prepare_turn_creates_session_and_formats_temporary_evidence(tmp_path: P
     assert store.list_messages(prepared.session.session_id, "visitor_a") == []
 
 
-def test_prepare_turn_writes_mode_specific_answer_contract_into_evidence_prompt(tmp_path: Path):
-    service, _, _ = build_service(tmp_path)
+def test_prepare_turn_writes_mode_specific_answer_contract_into_evidence_prompt(tmp_path: Path, pg_dsn: str, conversations_schema: str):
+    service, _, _ = build_service(tmp_path, pg_dsn, conversations_schema)
 
     regular = service.prepare_turn("灵山胜境有什么特色？", "visitor_a", "", mode="text")
     avatar = service.prepare_turn(
@@ -87,8 +91,8 @@ def test_prepare_turn_writes_mode_specific_answer_contract_into_evidence_prompt(
     assert "3—6句" in avatar.evidence_prompt
 
 
-def test_avatar_style_is_temporary_and_does_not_change_persisted_history(tmp_path: Path):
-    service, store, _ = build_service(tmp_path)
+def test_avatar_style_is_temporary_and_does_not_change_persisted_history(tmp_path: Path, pg_dsn: str, conversations_schema: str):
+    service, store, _ = build_service(tmp_path, pg_dsn, conversations_schema)
 
     prepared = service.prepare_turn(
         "灵山胜境怎么玩？",
@@ -108,8 +112,8 @@ def test_avatar_style_is_temporary_and_does_not_change_persisted_history(tmp_pat
     assert all("角色表达" not in message.content for message in messages)
 
 
-def test_prepare_turn_uses_same_session_history_across_modes(tmp_path: Path):
-    service, store, agent = build_service(tmp_path)
+def test_prepare_turn_uses_same_session_history_across_modes(tmp_path: Path, pg_dsn: str, conversations_schema: str):
+    service, store, agent = build_service(tmp_path, pg_dsn, conversations_schema)
     first = service.prepare_turn("灵山胜境有什么特色？", "visitor_a", "")
     service.persist_completed(first, "灵山胜境以灵山大佛闻名。")
 
@@ -124,8 +128,8 @@ def test_prepare_turn_uses_same_session_history_across_modes(tmp_path: Path):
     ]
 
 
-def test_prepare_turn_preserves_explicit_internal_route_in_existing_session(tmp_path: Path):
-    service, _, agent = build_service(tmp_path)
+def test_prepare_turn_preserves_explicit_internal_route_in_existing_session(tmp_path: Path, pg_dsn: str, conversations_schema: str):
+    service, _, agent = build_service(tmp_path, pg_dsn, conversations_schema)
     first = service.prepare_turn("灵山胜境适合老人的游玩路线", "visitor_a", "")
     service.persist_completed(first, "建议先游览灵山大佛。")
 
@@ -140,7 +144,7 @@ def test_prepare_turn_preserves_explicit_internal_route_in_existing_session(tmp_
     assert agent.contexts[-1].standalone_question == "从五明桥到五智门怎么走"
 
 
-def test_avatar_turn_routes_cleaned_internal_attraction_names_through_amap(tmp_path: Path):
+def test_avatar_turn_routes_cleaned_internal_attraction_names_through_amap(tmp_path: Path, pg_dsn: str, conversations_schema: str):
     settings = replace(
         AppSettings.for_workspace(tmp_path),
         question_expansion_enabled=False,
@@ -178,7 +182,7 @@ def test_avatar_turn_routes_cleaned_internal_attraction_names_through_amap(tmp_p
         scope_validator=scope.validate,
     )
     agent = AgentExecutor(settings=settings, tools=[PipelineBackedNoopTool(), route_tool])
-    store = ConversationStore(tmp_path / "route-conversations.db")
+    store = ConversationStore(pg_dsn, schema=conversations_schema)
     service = RealtimeConversationService(settings, store, agent)
 
     prepared = service.prepare_turn(
@@ -197,7 +201,7 @@ def test_avatar_turn_routes_cleaned_internal_attraction_names_through_amap(tmp_p
     assert summary["mode"] == "walking"
 
 
-def test_avatar_turn_rejects_out_of_scope_route_without_direction_or_sources(tmp_path: Path):
+def test_avatar_turn_rejects_out_of_scope_route_without_direction_or_sources(tmp_path: Path, pg_dsn: str, conversations_schema: str):
     settings = replace(
         AppSettings.for_workspace(tmp_path),
         question_expansion_enabled=False,
@@ -219,7 +223,7 @@ def test_avatar_turn_rejects_out_of_scope_route_without_direction_or_sources(tmp
     agent = AgentExecutor(settings=settings, tools=[PipelineBackedNoopTool(), route_tool])
     service = RealtimeConversationService(
         settings,
-        ConversationStore(tmp_path / "outside-route-conversations.db"),
+        ConversationStore(pg_dsn, schema=conversations_schema),
         agent,
     )
 
@@ -236,8 +240,8 @@ def test_avatar_turn_rejects_out_of_scope_route_without_direction_or_sources(tmp
     assert "10公里" in prepared.evidence.tool_trace[0].message
 
 
-def test_completed_turn_is_persisted_once_and_wrong_visitor_is_rejected(tmp_path: Path):
-    service, store, _ = build_service(tmp_path)
+def test_completed_turn_is_persisted_once_and_wrong_visitor_is_rejected(tmp_path: Path, pg_dsn: str, conversations_schema: str):
+    service, store, _ = build_service(tmp_path, pg_dsn, conversations_schema)
     prepared = service.prepare_turn("灵山胜境几点开放？", "visitor_a", "")
 
     service.persist_completed(prepared, "开放时间以景区公告为准。", "turn_1")

@@ -1,5 +1,9 @@
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("postgres_test_context")
+
 from lingjing_ai.services.attraction_store import AttractionStore
 
 
@@ -21,8 +25,12 @@ def attraction_payload(name: str = "灵山大佛", status: str = "published") ->
     }
 
 
-def test_store_creates_updates_filters_and_archives_attractions(tmp_path: Path):
-    store = AttractionStore(tmp_path / "attractions.db", tmp_path / "images", seed_on_empty=False)
+def test_store_creates_updates_filters_and_archives_attractions(
+    pg_dsn: str, attractions_schema: str, tmp_path: Path
+):
+    store = AttractionStore(
+        pg_dsn, tmp_path / "images", seed_on_empty=False, schema=attractions_schema
+    )
     created = store.create_attraction(attraction_payload())
     store.create_attraction(attraction_payload("五明桥", status="draft"))
 
@@ -41,8 +49,12 @@ def test_store_creates_updates_filters_and_archives_attractions(tmp_path: Path):
     assert store.get_attraction(created.attraction_id).status == "archived"
 
 
-def test_store_finds_latest_published_attraction_by_exact_name(tmp_path: Path):
-    store = AttractionStore(tmp_path / "attractions.db", tmp_path / "images", seed_on_empty=False)
+def test_store_finds_latest_published_attraction_by_exact_name(
+    pg_dsn: str, attractions_schema: str, tmp_path: Path
+):
+    store = AttractionStore(
+        pg_dsn, tmp_path / "images", seed_on_empty=False, schema=attractions_schema
+    )
     published = store.create_attraction(
         {**attraction_payload("五明桥"), "longitude": 120.102248, "latitude": 31.421749}
     )
@@ -59,9 +71,11 @@ def test_store_finds_latest_published_attraction_by_exact_name(tmp_path: Path):
     assert store.get_published_attraction_by_name("不存在景点") is None
 
 
-def test_store_orders_gallery_and_deletes_only_requested_image(tmp_path: Path):
+def test_store_orders_gallery_and_deletes_only_requested_image(
+    pg_dsn: str, attractions_schema: str, tmp_path: Path
+):
     image_dir = tmp_path / "images"
-    store = AttractionStore(tmp_path / "attractions.db", image_dir, seed_on_empty=False)
+    store = AttractionStore(pg_dsn, image_dir, seed_on_empty=False, schema=attractions_schema)
     attraction = store.create_attraction(attraction_payload())
     first_path = image_dir / "first.webp"
     second_path = image_dir / "second.webp"
@@ -83,15 +97,16 @@ def test_store_orders_gallery_and_deletes_only_requested_image(tmp_path: Path):
     assert [image.image_id for image in store.get_attraction(attraction.attraction_id).images] == [second.image_id]
 
 
-def test_empty_store_seeds_eight_attractions_only_once(tmp_path: Path):
-    db_path = tmp_path / "attractions.db"
+def test_empty_store_seeds_eight_attractions_only_once(
+    pg_dsn: str, attractions_schema: str, tmp_path: Path
+):
     image_dir = tmp_path / "images"
 
-    first = AttractionStore(db_path, image_dir, seed_on_empty=True)
+    first = AttractionStore(pg_dsn, image_dir, seed_on_empty=True, schema=attractions_schema)
     seed_path = image_dir / "seed-1.webp"
     expected_seed = seed_path.read_bytes()
     seed_path.write_bytes(b"stale-seed")
-    second = AttractionStore(db_path, image_dir, seed_on_empty=True)
+    second = AttractionStore(pg_dsn, image_dir, seed_on_empty=True, schema=attractions_schema)
 
     assert len(first.list_attractions(public_only=True)) == 8
     assert len(second.list_attractions(public_only=True)) == 8
@@ -105,10 +120,11 @@ def test_empty_store_seeds_eight_attractions_only_once(tmp_path: Path):
     }
 
 
-def test_store_does_not_overwrite_seed_after_admin_sets_custom_cover(tmp_path: Path):
-    db_path = tmp_path / "attractions.db"
+def test_store_does_not_overwrite_seed_after_admin_sets_custom_cover(
+    pg_dsn: str, attractions_schema: str, tmp_path: Path
+):
     image_dir = tmp_path / "images"
-    store = AttractionStore(db_path, image_dir, seed_on_empty=True)
+    store = AttractionStore(pg_dsn, image_dir, seed_on_empty=True, schema=attractions_schema)
     attraction = next(item for item in store.list_attractions() if item.sort_order == 10)
     seed_path = image_dir / "seed-1.webp"
     custom_path = image_dir / "custom.webp"
@@ -116,7 +132,7 @@ def test_store_does_not_overwrite_seed_after_admin_sets_custom_cover(tmp_path: P
     store.add_image(attraction.attraction_id, custom_path.name, is_cover=True)
     seed_path.write_bytes(b"administrator-kept-copy")
 
-    AttractionStore(db_path, image_dir, seed_on_empty=True)
+    AttractionStore(pg_dsn, image_dir, seed_on_empty=True, schema=attractions_schema)
 
     assert seed_path.read_bytes() == b"administrator-kept-copy"
     assert store.get_attraction(attraction.attraction_id).cover_image_url.endswith("custom.webp")

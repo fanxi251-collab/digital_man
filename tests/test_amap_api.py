@@ -2,6 +2,9 @@
 import asyncio
 
 import httpx
+import pytest
+
+pytestmark = pytest.mark.usefixtures("postgres_test_context")
 
 from lingjing_ai.api.app import _build_agent_executor, create_app
 from lingjing_ai.config.settings import AppSettings
@@ -301,12 +304,15 @@ def test_map_route_api_resolves_published_internal_names_and_defaults_to_walking
     assert summary["destination_location"] == "120.101292,31.423055"
 
 
-def test_agent_route_tool_receives_published_attraction_location_resolver(tmp_path: Path):
+def test_agent_route_tool_receives_published_attraction_location_resolver(
+    tmp_path: Path, pg_dsn: str, attractions_schema: str
+):
     pipeline = build_pipeline(tmp_path)
     store = AttractionStore(
-        tmp_path / "attractions.db",
+        pg_dsn,
         tmp_path / "attraction_images",
         seed_on_empty=True,
+        schema=attractions_schema,
     )
 
     executor = _build_agent_executor(pipeline, store)

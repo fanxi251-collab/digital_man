@@ -1,7 +1,11 @@
 ﻿from pathlib import Path
 import asyncio
+from dataclasses import replace
 
 import httpx
+import pytest
+
+pytestmark = pytest.mark.usefixtures("postgres_test_context")
 
 from lingjing_ai.api.app import create_app
 from lingjing_ai.config.settings import AppSettings
@@ -25,6 +29,14 @@ def build_pipeline(tmp_path: Path) -> RagPipeline:
     )
     pipeline.ingest_text("灵境山资料.md", "灵境山以云海日出和古栈道闻名。")
     return pipeline
+
+
+def test_create_app_requires_database_url(tmp_path: Path):
+    pipeline = build_pipeline(tmp_path)
+    pipeline.settings = replace(pipeline.settings, database_url="")
+
+    with pytest.raises(RuntimeError, match="DATABASE_URL"):
+        create_app(pipeline)
 
 
 def test_chat_endpoint_returns_rag_answer(tmp_path: Path):
