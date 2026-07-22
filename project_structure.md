@@ -45,8 +45,12 @@ python -m pip install -e .
 - `uploaded/`：前端或脚本上传后的 `.txt` / `.md` 资料。
 - `document_manifest.json`：资料清单，记录文档 ID、路径、MD5、切片数等。
 - `tourism_analytics_snapshot.json`：由本地 Excel 生成且不提交 Git 的游客分析快照。
-- `foods.db`、`food_images/`：独立保存美食推荐数据和本地摄影封面。
-- `feedback.db`：独立保存匿名游客反馈、处理状态和管理员回复。
+- `food_images/`：保存美食推荐的本地摄影封面。
+- 关系数据不存放在 `data/`，统一写入 PostgreSQL。
+
+### PostgreSQL
+
+关系数据通过必填的 `DATABASE_URL` 访问，并按职责拆分为 `attractions`、`conversations`、`foods`、`feedback` 四个 schema。景点、美食、历史会话和游客反馈均以 PostgreSQL 为唯一事实源。
 
 ### `qdrant_db/`
 
@@ -154,8 +158,8 @@ RAG 检索增强生成核心能力。
 - 文档清单。
 - Redis JSON 缓存封装。
 - 工具意图判断。
-- `food_store.py`：使用独立 SQLite 数据库管理美食、图集、封面、发布和空库种子数据。
-- `feedback_store.py`：使用独立 SQLite 数据库管理幂等反馈、游客隔离和处理状态。
+- `food_store.py`：使用 PostgreSQL `foods` schema 管理美食、图集、封面、发布和空表种子数据。
+- `feedback_store.py`：使用 PostgreSQL `feedback` schema 管理幂等反馈、游客隔离和处理状态。
 
 ### `src/lingjing_ai/storage/`
 
@@ -163,6 +167,7 @@ RAG 检索增强生成核心能力。
 
 - `qdrant_vector_store.py`：正式使用的 Qdrant 本地持久化向量库。
 - `vector_store.py`：JSON 向量存储，主要用于轻量测试。
+- `postgres.py`：统一管理 PostgreSQL schema 连接、事务和查询辅助函数。
 
 ### `src/lingjing_ai/models/`
 
@@ -197,7 +202,7 @@ RAG 检索增强生成核心能力。
 - 高德前端 JS Key 使用 `MAP_JS_API`。
 - 高德前端 JS 安全密钥使用 `MAP_JS_SECURITY_CODE`，用于满足 JS API 2.0 的安全校验。
 - 阿里云大模型 API Key 使用 `LJAPI_KEY`。
-- 双模式智能导游使用 `src/lingjing_ai/realtime/` 连接 Qwen-Audio Realtime；SQLite 仍是历史事实源。
+- 双模式智能导游使用 `src/lingjing_ai/realtime/` 连接 Qwen-Audio Realtime；PostgreSQL `conversations` schema 是历史事实源。
 - 常规模式只请求文本，数字人模式请求音频和文本，模式切换不清空会话。
 - 三个数字人角色共用同一会话和历史；切换角色会取消正在录音、生成或播放的轮次，但切换本身不调用模型。
 - 不再使用 Chroma。

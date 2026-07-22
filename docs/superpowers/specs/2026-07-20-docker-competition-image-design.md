@@ -10,11 +10,12 @@
 
 ## 2. 方案选择
 
-采用单应用镜像，不在镜像中捆绑 Redis 或 Neo4j 服务。
+采用单应用镜像，不在镜像中捆绑 PostgreSQL、Redis 或 Neo4j 服务。
 
 选择理由：
 
 - 比赛交付只需一个镜像归档，导入和启动步骤最少。
+- PostgreSQL 是必需的外部关系数据库，通过 `DATABASE_URL` 接入。
 - 本项目的 Redis 是可选缓存，缺失时会自动降级到内存缓存。
 - Neo4j 是可选知识图谱增强，缺失时基础 RAG 和游客功能仍可运行。
 - 避免在一个容器内管理多个服务进程，也避免提交多个体积较大的第三方镜像。
@@ -28,7 +29,7 @@
 1. 前端阶段使用 Node.js 20 镜像，复制 `frontend/package.json` 和锁文件，执行 `npm ci`，再复制前端源码并执行 `npm run test`、`npm run build`。
 2. Python 阶段使用 Python 3.12 slim 镜像，安装项目及当前后端所需的完整运行依赖。
 3. 将后端源码、脚本、Prompt、配置词典、前端管理页面、静态资源、Live2D 资源和前端构建产物复制到运行镜像。
-4. 将当前演示数据与本地 Qdrant 数据复制到运行镜像。
+4. 将当前文件资产与本地 Qdrant 数据复制到运行镜像；关系数据由外部 PostgreSQL 提供。
 5. 以非 root 用户运行单个 Uvicorn worker，监听 `0.0.0.0:8000`。
 
 运行入口固定为：
@@ -50,12 +51,11 @@ Docker 工作目录固定为 `/app`，与项目通过 `Path.cwd()` 解析工作�
 - `prompt/`、`config/asr_glossary.yml`。
 - `scripts/` 中的运维脚本。
 - `data/uploaded/` 与 `data/document_manifest.json`。
-- `data/conversations.db`、`data/attractions.db`、`data/foods.db`、`data/feedback.db`。
 - `data/attraction_images/`、`data/food_images/` 和 `data/tourism_analytics_snapshot.json`。
 - `qdrant_db/` 当前可用的本地向量库。
 - Docker 比赛运行说明。
 
-镜像内数据是构建时快照。容器启动后的修改默认只存在于容器可写层；需要保留新增数据时，运行者可为 `/app/data` 和 `/app/qdrant_db` 挂载命名卷。
+镜像内文件资产是构建时快照。容器启动后的文件修改默认只存在于容器可写层；需要保留上传资料、图片和向量数据时，运行者可为 `/app/data` 和 `/app/qdrant_db` 挂载命名卷。景点、会话、美食和反馈关系数据保存在外部 PostgreSQL，不使用上述卷。
 
 ## 5. 构建上下文排除项
 
@@ -84,12 +84,13 @@ KG_ENABLED=false
 
 完整 AI 能力运行时需要注入：
 
+- `DATABASE_URL`（应用启动必需）
 - `LJAPI_KEY`
 - `MAP_API`
 - `MAP_JS_API`
 - `MAP_JS_SECURITY_CODE`
 
-可选注入 Realtime 模型、Workspace ID、Redis、Neo4j 和模型覆盖配置。镜像、Dockerfile、运行说明和导出的 tar 中都不得出现本地真实密钥值。
+可选注入 Realtime 模型、Workspace ID、Redis、Neo4j 和模型覆盖配置。镜像、Dockerfile、运行说明和导出的 tar 中都不得出现数据库密码或其他真实密钥值。容器中的 `localhost` 不是宿主机 PostgreSQL 地址。
 
 由于当前 Qdrant 数据使用既有 Embedding 配置生成，运行时应保持相同的 `LJ_EMBEDDING_MODEL` 和 `LJ_EMBEDDING_DIMENSIONS`。完整问答体验应提供有效的 `LJAPI_KEY`。
 
@@ -109,11 +110,12 @@ docker run --name lingjing-ai -p 8000:8000 --env-file competition.env lingjing-a
 docker run --name lingjing-ai -p 8000:8000 --env-file competition.env -v lingjing-data:/app/data -v lingjing-qdrant:/app/qdrant_db lingjing-ai:competition
 ```
 
-首次挂载新的命名卷时，Docker 会以镜像内对应目录的演示数据初始化卷。
+首次挂载新的命名卷时，Docker 会以镜像内对应目录的文件资产初始化卷；PostgreSQL 数据不从镜像或卷初始化。
 
 ## 8. 错误处理
 
 - 缺少阿里云 Key：应用仍可启动并展示静态页面和本地数据，实时语音与完整 LLM 能力不可用。
+- 缺少 `DATABASE_URL`：应用快速失败并明确报告 PostgreSQL 配置缺失，不创建空白本地数据库。
 - 缺少高德 Key：地图配置接口返回未启用状态，景点、美食、资料和基础页面仍可访问。
 - Redis 或 Neo4j 不可用：按项目现有逻辑降级，不阻塞容器启动。
 - Qdrant 被多进程打开：镜像强制使用单 worker，运行说明禁止同一数据卷被多个容器同时挂载写入。
@@ -138,6 +140,7 @@ docker run --name lingjing-ai -p 8000:8000 --env-file competition.env -v lingjin
 - 资料、景点、美食、反馈与知识图谱状态 API 返回可解析响应。
 - 内置资料、景点和美食数量不为零。
 - 镜像环境与文件系统中不存在构建机的真实 `.env` 或 `config.yml`。
+- 镜像文件系统中不存在关系数据库文件，运行时通过 `DATABASE_URL` 访问 PostgreSQL。
 - 容器以非 root 用户运行。
 
 导出后：

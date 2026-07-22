@@ -201,7 +201,8 @@ KG_ENABLED: false
 
 - `data/uploaded/`：上传的原始 `.txt` / `.md` 资料。
 - `data/document_manifest.json`：资料清单。
-- `data/conversations.db`：游客端历史会话 SQLite 数据库。
+- `data/attraction_images/`、`data/food_images/`：景点和美食图片文件。
+- PostgreSQL：通过 `DATABASE_URL` 保存景点、美食、游客反馈和历史会话关系数据。
 - `qdrant_db/`：Qdrant 本地向量库。
 - `logs/`：问答、Agent 等运行日志。
 - `frontend/dist/`：Vue 构建产物。
@@ -283,7 +284,7 @@ npm run build
 
 - 项目源码。
 - `config.yml` 示例文件，但不要直接泄露真实 API Key。
-- 是否需要一并提供 `data/uploaded/`、`data/document_manifest.json`、`qdrant_db/`、`data/conversations.db`。
+- 是否需要一并提供 `data/uploaded/`、`data/document_manifest.json`、图片目录和 `qdrant_db/`，以及 PostgreSQL `pg_dump` 备份。
 - Redis、Neo4j 是否必须启用；如果不是必须，建议先关闭后启动项目。
 - 前端首次运行前必须执行 `npm install` 和 `npm run build`。
 - 景点封面种子图在 `src/lingjing_ai/assets/attractions/`；运行时图在 `data/attraction_images/`（勿提交）。同事拉取新 seed 后重启后端即可自动同步默认封面；自定义封面不受影响。

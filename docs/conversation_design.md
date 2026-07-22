@@ -4,22 +4,23 @@
 
 ## 目标
 
-多轮对话用于解决游客追问中的省略指代问题，例如“那门票呢”“怎么去”“今日天气如何”。当前版本已经引入后端持久化历史会话：游客端使用匿名 `visitor_id`，后端用 SQLite 保存会话和消息，问答时优先读取后端最近历史构建上下文。
+多轮对话用于解决游客追问中的省略指代问题，例如“那门票呢”“怎么去”“今日天气如何”。当前版本已经引入后端持久化历史会话：游客端使用匿名 `visitor_id`，后端用 PostgreSQL 保存会话和消息，问答时优先读取后端最近历史构建上下文。
 
 旧的 `history` 请求字段继续兼容；当请求没有 `visitor_id` 或 `persist_history=false` 时，系统仍可使用前端传入的 `history` 作为轻量上下文。
 
 ## 存储设计
 
-SQLite 数据库位置：
+关系数据通过必填的 `DATABASE_URL` 连接 PostgreSQL，使用 schema：
 
 ```text
-data/conversations.db
+conversations
 ```
 
 核心表：
 
 - `conversation_sessions`：保存 `session_id`、`visitor_id`、标题、最近问题、创建时间、更新时间。
 - `chat_messages`：保存单条用户/助手消息、`trace_id`、`sources`、`tool_trace`、创建时间。
+- `completed_realtime_turns`：保存已完成实时轮次标识，保证重试幂等。
 
 第一版只保存对话历史，不保存长期用户画像或偏好记忆。
 
