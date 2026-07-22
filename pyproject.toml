@@ -22,3 +22,5 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+addopts = "--basetemp=test-artifacts/pytest/current"
+cache_dir = "test-artifacts/pytest/cache"

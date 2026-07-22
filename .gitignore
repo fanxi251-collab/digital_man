@@ -2,7 +2,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
-.pytest_cache/
+/test-artifacts/
 .env
 config.yml
 logs/*.jsonl
