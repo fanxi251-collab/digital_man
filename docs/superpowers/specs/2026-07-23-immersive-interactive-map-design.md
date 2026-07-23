@@ -171,7 +171,7 @@ switchScene(kind)
 initialize(context)
 setCamera(cameraCue, options)
 drawRoute(routeCue, progress)
-focusPlace(placeId, options)
+focusPlace(resolvedPlaceId, options)
 setActiveStop(stopId)
 enterExploreMode()
 resize()
@@ -213,7 +213,10 @@ interface TourDefinition {
 ```ts
 interface TourStop {
   id: string
-  placeId: string
+  placeRef: {
+    kind: "attraction" | "food"
+    name: string
+  }
   startMs: number
   durationMs: number
   camera: {
@@ -242,7 +245,7 @@ interface PersonaDefinition {
 }
 ```
 
-路线定义只引用已有地点 ID，不复制地点名称、坐标和详情。启动时必须校验所有引用能在当前已发布地点中解析；无法解析的可选站点被跳过，经典路线核心站点缺失时禁止启动巡游并给出可读提示。
+景点数据库 ID 在不同部署中可能变化，因此巡游定义使用稳定的 `{ kind, name }` 引用，不硬编码数据库 ID，也不复制坐标和详情。页面加载已发布地点后，将引用解析为当前 `place_id`；无法解析的可选站点被跳过，经典路线核心站点缺失时禁止启动巡游并给出可读提示。
 
 ## 在线与本地场景切换
 
@@ -269,7 +272,7 @@ interface PersonaDefinition {
 | AI 超时或失败 | 展示本地推荐理由 | 保留问题与重试入口，不显示原始异常 |
 | 本地音频失败 | 继续字幕和光球状态 | 禁止临时调用实时 TTS |
 | 页面隐藏 | 自动暂停 | 返回后等待用户继续 |
-| 经典路线核心地点缺失 | 禁止启动并给出维护提示 | 记录缺失地点 ID，避免运行期崩溃 |
+| 经典路线核心地点缺失 | 禁止启动并给出维护提示 | 记录缺失地点引用，避免运行期崩溃 |
 
 ## 无障碍与输入方式
 
