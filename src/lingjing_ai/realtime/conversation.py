@@ -70,6 +70,7 @@ class RealtimeConversationService:
         expanded_questions: list[str] | None = None,
         mode: str = "text",
         avatar_style: str = "",
+        evidence_profile: str | None = None,
     ) -> PreparedRealtimeTurn:
         normalized_question = str(question or "").strip()
         normalized_visitor = str(visitor_id or "").strip()
@@ -87,10 +88,15 @@ class RealtimeConversationService:
                 limit=self.settings.realtime_history_turns * 2,
             )
         ]
+        # Realtime 默认跳过扩写 LLM：规则改写仍保留，避免每轮多一次 qwen-plus 往返。
+        skip_expansion = (
+            expanded_questions is not None
+            or bool(self.settings.realtime_skip_question_expansion)
+        )
         context = build_conversation_context(
             normalized_question,
             history,
-            question_expander=self.question_expander if expanded_questions is None else None,
+            question_expander=None if skip_expansion else self.question_expander,
             max_expansion_candidates=self.settings.question_expansion_max_candidates,
             expansion_top_n=self.settings.question_expansion_top_n,
             question_expansion_auto_skip=self.settings.question_expansion_auto_skip,
@@ -102,9 +108,11 @@ class RealtimeConversationService:
                 expanded_questions=expanded,
                 selected_questions=expanded[: self.settings.question_expansion_top_n],
             )
+        profile = (evidence_profile or self.settings.realtime_evidence_profile or "lite").strip().lower()
         evidence = self.agent_executor.collect_evidence(
             normalized_question,
             conversation_context=context,
+            profile=profile,
         )
         answer_contract = build_answer_contract(evidence, mode)
         return PreparedRealtimeTurn(

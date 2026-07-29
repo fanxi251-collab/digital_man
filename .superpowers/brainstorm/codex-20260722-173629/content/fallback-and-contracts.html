@@ -1,0 +1,42 @@
+<style>
+  .safe-wrap{max-width:1080px;margin:0 auto}.switch-diagram{display:grid;grid-template-columns:1fr 150px 1fr;gap:14px;align-items:center;margin:24px 0}.scene-box{min-height:235px;padding:18px;border-radius:19px;border:1px solid rgba(35,106,95,.22);box-shadow:0 14px 30px rgba(20,62,58,.09)}.scene-box.online{background:linear-gradient(145deg,#0b6b63,#06363c);color:#effbf7}.scene-box.offline{background:linear-gradient(145deg,#edf7f3,#daeae5);color:#204e48}.scene-box .tag{display:inline-block;padding:5px 8px;border-radius:999px;font-size:9px;font-weight:800;letter-spacing:.1em;background:rgba(255,255,255,.16)}.scene-box.offline .tag{background:#c7e3da}.scene-box h3{margin:12px 0 7px}.scene-box p{font-size:11px;line-height:1.6;opacity:.76}.scene-list{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:13px}.scene-list span{padding:8px;border-radius:9px;background:rgba(255,255,255,.08);font-size:9px}.offline .scene-list span{background:rgba(255,255,255,.62)}
+  .bridge{text-align:center}.bridge-orb{width:62px;height:62px;margin:0 auto 10px;border-radius:50%;background:radial-gradient(circle at 38% 32%,#fff2c8,#edc467 26%,#43a58f 56%,rgba(15,104,94,.12) 73%);box-shadow:0 0 30px rgba(223,180,86,.45)}.bridge strong{display:block;color:#245a52;font-size:11px}.bridge small{display:block;margin-top:5px;color:#748985;font-size:9px;line-height:1.45}
+  .sequence{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:18px 0;padding:14px;border-radius:15px;background:#eff7f4}.sequence div{text-align:center;color:#3d625d;font-size:10px}.sequence b{display:block;margin-bottom:4px;color:#22665c}.sequence div:not(:last-child):after{content:'→';float:right;color:#ba8e3a}
+  .failure-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:18px 0}.failure{padding:14px;border-radius:15px;border:1px solid #d5e6e0;background:#fbfdfc}.failure h3{margin:0 0 7px;font-size:13px;color:#244e49}.failure p{margin:0;font-size:10px;line-height:1.55;color:#667d79}.failure strong{display:block;margin-top:8px;color:#a37a2c;font-size:9px}
+  .contract{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px;margin:20px 0}.contract-card{padding:15px;border-radius:16px;background:#0b4f4a;color:#eaf8f4}.contract-card:nth-child(2){background:#176e64}.contract-card:nth-child(3){background:#e8f2ee;color:#27534d}.contract-card code{display:block;margin:4px 0;color:#f2cc78;font-size:10px}.contract-card:nth-child(3) code{color:#267166}.contract-card p{margin:8px 0 0;font-size:9px;line-height:1.5;opacity:.75}.guardrails{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.guardrails span{padding:7px 10px;border-radius:999px;background:#fbf4e3;color:#765a25;font-size:10px;font-weight:700}.design-note{padding:14px 16px;border-left:3px solid #e7bd63;background:#fbf7eb;color:#536a66;font-size:12px;line-height:1.6}.approval{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}.approval .option{margin:0}
+  @media(max-width:900px){.switch-diagram{grid-template-columns:1fr}.bridge{padding:8px}.failure-grid,.contract{grid-template-columns:1fr 1fr}.sequence{grid-template-columns:1fr}.sequence div:not(:last-child):after{content:'↓';float:none;display:block;margin-top:4px}}@media(max-width:580px){.failure-grid,.contract,.approval{grid-template-columns:1fr}}
+</style>
+
+<div class="safe-wrap">
+  <div class="label">DESIGN SECTION 04 · RESILIENCE & CONTRACTS</div>
+  <h2>在线地图失效，体验不失速</h2>
+  <p class="subtitle">本地场景在页面进入时就预加载。高德加载失败或巡游中断时，只替换“场景适配器”，导演时间、语音、字幕和光球状态保持连续。</p>
+
+  <div class="switch-diagram">
+    <section class="scene-box online"><span class="tag">PRIMARY · ONLINE</span><h3>高德 3D 场景</h3><p>真实地图、3D 镜头、景点标记与路线数据，承担正常比赛演示。</p><div class="scene-list"><span>3D Camera</span><span>Loca 流光</span><span>真实路线</span><span>地图事件</span></div></section>
+    <div class="bridge"><div class="bridge-orb"></div><strong>TourDirector</strong><small>同一秒数<br/>同一站点<br/>同一段语音</small></div>
+    <section class="scene-box offline"><span class="tag">FALLBACK · LOCAL</span><h3>本地景区场景</h3><p>本地摄影背景、SVG 路线、景点坐标映射与预制镜头，随前端构建发布。</p><div class="scene-list"><span>本地背景</span><span>SVG 路线</span><span>预制镜头</span><span>同样可点击</span></div></section>
+  </div>
+
+  <div class="sequence"><div><b>提前预载</b>本地场景先就绪</div><div><b>尝试在线</b>5 秒内完成加载</div><div><b>记录进度</b>保存当前毫秒与站点</div><div><b>450ms 溶解</b>切换场景但不停音频</div><div><b>稳定继续</b>不在巡游中自动切回</div></div>
+
+  <div class="failure-grid">
+    <article class="failure"><h3>地图加载失败</h3><p>自动进入本地场景，顶部只显示轻量“本地演示模式”。</p><strong>巡游不中断</strong></article>
+    <article class="failure"><h3>路线 API 失败</h3><p>使用当前画像的精选路线，并保留稍后重试入口。</p><strong>路线仍可切换</strong></article>
+    <article class="failure"><h3>真实 AI 超时</h3><p>先展示本地推荐理由，不把技术错误暴露给评委。</p><strong>面板始终有内容</strong></article>
+    <article class="failure"><h3>音频不可播放</h3><p>字幕继续按时间轴显示，光球切换为静默讲解状态。</p><strong>无声也能完整演示</strong></article>
+  </div>
+
+  <div class="label">SHARED DATA CONTRACT</div>
+  <h2>同一份数据驱动两种场景</h2>
+  <div class="contract">
+    <div class="contract-card"><h3>TourDefinition</h3><code>id / version / durationMs</code><code>stops[] / narration / controls</code><p>描述整条巡游的顺序、总时长、语音资源和控制策略。</p></div>
+    <div class="contract-card"><h3>TourStop</h3><code>placeId / startMs / durationMs</code><code>camera / routeEffect / storyCard</code><p>在线与离线适配器各自解释 camera，但共享站点时间和内容。</p></div>
+    <div class="contract-card"><h3>TourState</h3><code>mode / elapsedMs / activeStop</code><code>sceneKind / paused / takeover</code><p>这是唯一运行状态，UI 与场景只订阅它，不各自保存一套进度。</p></div>
+  </div>
+
+  <div class="guardrails"><span>减少动态效果：取消飞行，只短淡化</span><span>页面隐藏：自动暂停</span><span>用户接管：先确认再停止巡游</span><span>恢复在线：巡游结束后由用户决定</span></div>
+  <div class="design-note"><strong>边界：</strong>第一阶段不缓存或打包高德地图瓦片。本地降级使用项目自有摄影背景和前端矢量覆盖物，避免依赖在线底图，也避免维护两套业务流程。</div>
+
+  <div class="approval options"><div class="option" data-choice="fallback-approved" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>降级与数据契约通过</h3><p>继续完成测试、性能和验收设计。</p></div></div><div class="option" data-choice="fallback-revise" onclick="toggleSelect(this)"><div class="letter">↺</div><div class="content"><h3>需要调整</h3><p>请在终端说明希望改变的降级行为。</p></div></div></div>
+</div>

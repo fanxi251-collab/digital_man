@@ -73,6 +73,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleHistoryKeydown
         :is-loading="chatApi.isLoading.value"
         :avatar-state="chatApi.avatarState.value"
         :avatar-id="chatApi.avatarId.value"
+        :pending-avatar-id="chatApi.pendingAvatarId.value"
         :avatar-ready="chatApi.avatarReady.value"
         :audio-level="chatApi.audioLevel.value"
         :input-level="chatApi.inputLevel.value"

@@ -5,6 +5,7 @@ import AttractionDetailDrawer from "../components/AttractionDetailDrawer.vue";
 import FoodDetailDrawer from "../components/FoodDetailDrawer.vue";
 import { useInteractiveMap } from "../composables/useInteractiveMap";
 import { normalizeAttractionPlace, normalizeFoodPlace } from "../lib/mapPlaces";
+import { fetchVisitorAttractions, fetchVisitorFoods } from "../lib/visitorCatalog.js";
 
 const route = useRoute();
 const places = ref([]);
@@ -31,16 +32,15 @@ async function loadPlaces() {
   if (hasLoaded) return;
   loadStatus.value = "正在加载景点与美食地点...";
   try {
-    const [attractionResponse, foodResponse] = await Promise.all([
-      fetch("/api/visitor/attractions"),
-      fetch("/api/visitor/foods"),
+    const [attractionResult, foodResult] = await Promise.allSettled([
+      fetchVisitorAttractions(),
+      fetchVisitorFoods(),
     ]);
-    const [attractionData, foodData] = await Promise.all([
-      attractionResponse.json(),
-      foodResponse.json(),
-    ]);
-    const attractions = attractionResponse.ok ? (attractionData.attractions || []) : [];
-    const foods = foodResponse.ok ? (foodData.foods || []) : [];
+    const attractions = attractionResult.status === "fulfilled" ? attractionResult.value.attractions : [];
+    const foods = foodResult.status === "fulfilled" ? foodResult.value.foods : [];
+    if (attractionResult.status === "rejected" && foodResult.status === "rejected") {
+      throw attractionResult.reason || foodResult.reason || new Error("地点加载失败");
+    }
     places.value = [
       ...attractions.map(normalizeAttractionPlace),
       ...foods.map(normalizeFoodPlace),

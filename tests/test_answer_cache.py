@@ -47,6 +47,28 @@ def build_pipeline(tmp_path: Path, generator: CountingAnswerGenerator) -> RagPip
     )
 
 
+def test_pipeline_reuses_evidence_search_cache_until_invalidated(tmp_path: Path):
+    from lingjing_ai.rag.cache import evidence_search_cache_key
+
+    generator = CountingAnswerGenerator()
+    pipeline = build_pipeline(tmp_path, generator)
+    pipeline.ingest_text("灵境山资料.md", "灵境山以云海日出和古栈道闻名。")
+
+    first = pipeline.search_sources("灵境山有什么特色")
+    second = pipeline.search_sources("灵境山有什么特色")
+    assert [source.chunk_id for source in first] == [source.chunk_id for source in second]
+    cache_key = evidence_search_cache_key(
+        "灵境山有什么特色",
+        pipeline.knowledge_version,
+        pipeline.settings.retrieval_mode,
+        pipeline.settings.top_k,
+    )
+    assert pipeline.evidence_search_cache.get(cache_key) is not None
+
+    pipeline.invalidate_answer_cache()
+    assert pipeline.evidence_search_cache.get(cache_key) is None
+
+
 def test_pipeline_reuses_answer_cache_for_normalized_question(tmp_path: Path):
     generator = CountingAnswerGenerator()
     pipeline = build_pipeline(tmp_path, generator)

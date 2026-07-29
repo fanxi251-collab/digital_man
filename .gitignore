@@ -4,6 +4,10 @@ __pycache__/
 .venv/
 /test-artifacts/
 .env
+# Keep container runtime secrets local because Compose must interpolate them without committing credentials.
+app.env
+# Keep database transfer archives out of Git because they contain deployment data and are distributed separately.
+*.dump
 config.yml
 logs/*.jsonl
 chroma_db/*.json

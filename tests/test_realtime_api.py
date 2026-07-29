@@ -117,3 +117,21 @@ def test_realtime_websocket_rejects_session_owned_by_another_visitor(tmp_path: P
     assert websocket.events[0]["type"] == "error"
     assert websocket.events[0]["code"] == "SESSION_FORBIDDEN"
     assert websocket.closed == 1008
+
+
+def test_realtime_websocket_rejects_an_unknown_initial_avatar(tmp_path: Path):
+    app = create_app(build_pipeline(tmp_path))
+    websocket = FakeWebSocket()
+
+    asyncio.run(
+        realtime_endpoint(app)(
+            websocket,
+            visitor_id="visitor_a",
+            session_id="",
+            avatar_id="remote-model",
+        )
+    )
+
+    assert websocket.events[0]["type"] == "error"
+    assert websocket.events[0]["code"] == "INVALID_AVATAR"
+    assert websocket.closed == 1008

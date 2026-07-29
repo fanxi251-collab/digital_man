@@ -53,7 +53,26 @@ def test_map_config_api_returns_frontend_map_settings(tmp_path: Path, monkeypatc
     assert body["enabled"] is True
     assert body["js_api_key"] == "js-map-key"
     assert body["security_js_code"] == "js-security-code"
+    assert body["map_style"] == "amap://styles/normal"
     assert body["default_route_mode"] == "driving"
+
+
+def test_map_config_api_allows_custom_map_style(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("MAP_JS_API", "js-map-key")
+    monkeypatch.setenv("MAP_JS_SECURITY_CODE", "js-security-code")
+    monkeypatch.setenv("MAP_JS_STYLE", "amap://styles/fresh")
+    app = create_app(build_pipeline(tmp_path))
+
+    async def request() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            return await client.get("/api/tools/map/config")
+
+    response = asyncio.run(request())
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["map_style"] == "amap://styles/fresh"
 
 
 def test_map_config_api_requires_js_security_code(tmp_path: Path, monkeypatch):

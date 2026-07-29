@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -25,8 +26,9 @@ class FakeBrowser:
 
 
 class FakeQwen:
-    def __init__(self) -> None:
+    def __init__(self, fail_open: bool = False) -> None:
         self.history = []
+        self.session_configs = []
         self.messages = []
         self.evidence_items = []
         self.deleted = []
@@ -35,12 +37,17 @@ class FakeQwen:
         self.commits = 0
         self.cancels = 0
         self.fail_create_response = False
+        self.fail_open = fail_open
+        self.close_count = 0
 
-    async def open(self, history):
+    async def open(self, history, session_config=None):
+        if self.fail_open:
+            raise RuntimeError("candidate connection failed")
         self.history = history
+        self.session_configs.append(session_config)
 
     async def close(self):
-        return None
+        self.close_count += 1
 
     async def inject_message(self, role, content, item_id=None):
         self.messages.append((role, content))
@@ -53,10 +60,10 @@ class FakeQwen:
     async def delete_item(self, item_id):
         self.deleted.append(item_id)
 
-    async def create_response(self, mode, voice=None):
+    async def create_response(self, mode):
         if self.fail_create_response:
             raise RuntimeError("upstream create failed")
-        self.responses.append((mode, voice))
+        self.responses.append(mode)
 
     async def append_audio(self, pcm):
         self.audio.append(pcm)
@@ -73,6 +80,7 @@ class FakeQwen:
 
 class FakeConversationService:
     def __init__(self) -> None:
+        self.history = []
         self.persisted = []
         self.prepare_calls = []
         self.prepare_styles = []
@@ -102,7 +110,7 @@ class FakeConversationService:
         )
 
     def upstream_history(self, session_id, visitor_id):
-        return []
+        return self.history
 
     def normalize_transcript(self, question, visitor_id, session_id):
         self.normalize_calls.append(question)
@@ -172,11 +180,36 @@ def test_text_mode_requests_text_only_and_persists_complete_answer(tmp_path: Pat
 
     browser, qwen, service = asyncio.run(scenario())
 
-    assert qwen.responses == [("text", None)]
+    assert qwen.responses == ["text"]
     assert qwen.messages == [("user", "灵山胜境有什么特色？")]
     assert service.persisted == [("灵山胜境有什么特色？", "灵山值得游览。")]
     assert qwen.deleted == ["evidence_1"]
     assert browser.json_events[-1]["type"] == "turn.completed"
+
+
+def test_initial_avatar_configures_the_first_upstream_session(tmp_path: Path):
+    async def scenario():
+        browser = FakeBrowser()
+        qwen = FakeQwen()
+        session = VisitorRealtimeSession(
+            browser,
+            "visitor_a",
+            "",
+            AppSettings.for_workspace(tmp_path),
+            FakeConversationService(),
+            qwen,
+            avatar_id="haruto",
+        )
+        await session.open()
+        return browser, qwen
+
+    browser, qwen = asyncio.run(scenario())
+
+    assert qwen.session_configs[0].voice == "longanxiaoxin"
+    assert "Haruto儿童导游" in qwen.session_configs[0].instructions
+    ready = next(event for event in browser.json_events if event["type"] == "session.ready")
+    assert ready["avatar_id"] == "haruto"
+    assert ready["voice"] == "longanxiaoxin"
 
 
 def test_text_mode_replaces_streamed_markdown_with_clean_final_and_history_text(tmp_path: Path):
@@ -314,7 +347,7 @@ def test_avatar_audio_flow_forwards_pcm_and_audio_output(tmp_path: Path):
 
     assert qwen.audio == [b"\x01\x02"]
     assert qwen.commits == 1
-    assert qwen.responses == [("avatar", "longanqian")]
+    assert qwen.responses == ["avatar"]
     assert browser.audio_frames == [b"\x03\x04"]
     assert any(event["type"] == "user.transcript.done" for event in browser.json_events)
     assert any(event["type"] == "assistant.audio.started" for event in browser.json_events)
@@ -324,9 +357,16 @@ def test_avatar_selection_is_whitelisted_and_controls_voice_and_style(tmp_path: 
     async def scenario():
         browser = FakeBrowser()
         qwen = FakeQwen()
+        male_qwen = FakeQwen()
         service = FakeConversationService()
         session = VisitorRealtimeSession(
-            browser, "visitor_a", "", AppSettings.for_workspace(tmp_path), service, qwen
+            browser,
+            "visitor_a",
+            "",
+            AppSettings.for_workspace(tmp_path),
+            service,
+            qwen,
+            qwen_client_factory=lambda: male_qwen,
         )
         await session.open()
         await session.handle_client_event({"type": "avatar.set", "avatar_id": "remote-model"})
@@ -335,9 +375,9 @@ def test_avatar_selection_is_whitelisted_and_controls_voice_and_style(tmp_path: 
         await session.handle_client_event(
             {"type": "text.submit", "turn_id": "turn_male", "text": "介绍一下灵山胜境"}
         )
-        return browser, qwen, service, session
+        return browser, qwen, male_qwen, service, session
 
-    browser, qwen, service, session = asyncio.run(scenario())
+    browser, qwen, male_qwen, service, session = asyncio.run(scenario())
 
     ready = next(event for event in browser.json_events if event["type"] == "session.ready")
     assert ready["avatar_id"] == "mao_pro"
@@ -350,17 +390,27 @@ def test_avatar_selection_is_whitelisted_and_controls_voice_and_style(tmp_path: 
         for event in browser.json_events
     )
     assert session.pending.avatar_id == "chitose"
-    assert qwen.responses == [("avatar", "longanlufeng")]
-    assert "沉稳" in service.prepare_styles[-1]
+    assert qwen.close_count == 1
+    assert male_qwen.responses == ["avatar"]
+    assert male_qwen.session_configs[-1].voice == "longanlufeng"
+    assert "沉稳" in male_qwen.session_configs[-1].instructions
+    assert service.prepare_styles[-1] == ""
 
 
 def test_switching_avatar_cancels_active_turn_before_acknowledging_new_avatar(tmp_path: Path):
     async def scenario():
         browser = FakeBrowser()
         qwen = FakeQwen()
+        child_qwen = FakeQwen()
         service = FakeConversationService()
         session = VisitorRealtimeSession(
-            browser, "visitor_a", "", AppSettings.for_workspace(tmp_path), service, qwen
+            browser,
+            "visitor_a",
+            "",
+            AppSettings.for_workspace(tmp_path),
+            service,
+            qwen,
+            qwen_client_factory=lambda: child_qwen,
         )
         await session.open()
         await session.handle_client_event({"type": "mode.set", "mode": "avatar"})
@@ -371,15 +421,87 @@ def test_switching_avatar_cancels_active_turn_before_acknowledging_new_avatar(tm
             {"type": "response.created", "response": {"id": "resp_old"}}
         )
         await session.handle_client_event({"type": "avatar.set", "avatar_id": "haruto"})
-        return browser, qwen, service, session
+        return browser, qwen, child_qwen, service, session
 
-    browser, qwen, service, session = asyncio.run(scenario())
+    browser, qwen, child_qwen, service, session = asyncio.run(scenario())
 
     assert qwen.cancels == 1
     assert service.persisted == []
     assert session.pending is None
     assert session.avatar_id == "haruto"
-    assert browser.json_events[-1] == {"type": "avatar.changed", "avatar_id": "haruto"}
+    assert child_qwen.session_configs[-1].voice == "longanxiaoxin"
+    assert browser.json_events[-1] == {
+        "type": "avatar.changed",
+        "avatar_id": "haruto",
+        "voice": "longanxiaoxin",
+    }
+
+
+def test_failed_avatar_connection_keeps_old_role_and_connection(tmp_path: Path):
+    async def scenario():
+        browser = FakeBrowser()
+        original = FakeQwen()
+        failed = FakeQwen(fail_open=True)
+        service = FakeConversationService()
+        session = VisitorRealtimeSession(
+            browser,
+            "visitor_a",
+            "",
+            AppSettings.for_workspace(tmp_path),
+            service,
+            original,
+            qwen_client_factory=lambda: failed,
+        )
+        await session.open()
+        await session.handle_client_event({"type": "avatar.set", "avatar_id": "chitose"})
+        return browser, original, failed, session
+
+    browser, original, failed, session = asyncio.run(scenario())
+
+    assert session.avatar_id == "mao_pro"
+    assert session.qwen is original
+    assert original.close_count == 0
+    assert failed.close_count == 1
+    assert browser.json_events[-1]["type"] == "avatar.change_failed"
+    assert browser.json_events[-1]["active_avatar_id"] == "mao_pro"
+
+
+def test_avatar_voice_mismatch_cancels_audio_and_uses_text_fallback(tmp_path: Path):
+    async def scenario():
+        browser = FakeBrowser()
+        qwen = FakeQwen()
+        service = FakeConversationService()
+        session = VisitorRealtimeSession(
+            browser,
+            "visitor_a",
+            "",
+            AppSettings.for_workspace(tmp_path),
+            service,
+            qwen,
+            avatar_id="chitose",
+        )
+        await session.open()
+        await session.handle_client_event({"type": "mode.set", "mode": "avatar"})
+        await session.handle_client_event(
+            {"type": "text.submit", "turn_id": "turn_voice", "text": "介绍灵山胜境"}
+        )
+        await session.handle_upstream_event(
+            {
+                "type": "response.created",
+                "response": {"id": "resp_voice", "voice": "longanqian"},
+            }
+        )
+        return browser, qwen, service
+
+    browser, qwen, service = asyncio.run(scenario())
+
+    assert qwen.cancels == 1
+    assert browser.audio_frames == []
+    assert any(
+        event["type"] == "error" and event["code"] == "AVATAR_VOICE_MISMATCH"
+        for event in browser.json_events
+    )
+    assert service.persisted == [("介绍灵山胜境", "本地证据兜底回答")]
 
 
 def test_medium_voice_correction_replaces_upstream_item_and_persists_only_corrected_text(
@@ -604,3 +726,72 @@ def test_late_events_from_cancelled_turn_cannot_complete_new_turn(tmp_path: Path
     service = asyncio.run(scenario())
 
     assert service.persisted == [("第二个问题", "新回答")]
+
+
+def test_upstream_reconnect_retries_with_backoff_and_resets_on_success(tmp_path: Path):
+    async def scenario():
+        browser = FakeBrowser()
+        primary = FakeQwen()
+        attempts = {"count": 0}
+
+        def factory():
+            attempts["count"] += 1
+            client = FakeQwen(fail_open=attempts["count"] < 2)
+            return client
+
+        settings = replace(
+            AppSettings.for_workspace(tmp_path),
+            realtime_reconnect_max_attempts=3,
+            realtime_reconnect_base_delay_ms=1,
+        )
+        session = VisitorRealtimeSession(
+            browser,
+            "visitor_a",
+            "sess_1",
+            settings,
+            FakeConversationService(),
+            primary,
+            qwen_client_factory=factory,
+        )
+        await session.open()
+        recovered = await session._try_reconnect(primary)
+        return recovered, attempts["count"], session._reconnect_failures, session.upstream_available
+
+    recovered, attempt_count, failures, available = asyncio.run(scenario())
+
+    assert recovered is True
+    assert attempt_count == 2
+    assert failures == 0
+    assert available is True
+
+
+def test_upstream_reconnect_exhausts_attempts(tmp_path: Path):
+    async def scenario():
+        browser = FakeBrowser()
+        primary = FakeQwen()
+
+        def factory():
+            return FakeQwen(fail_open=True)
+
+        settings = replace(
+            AppSettings.for_workspace(tmp_path),
+            realtime_reconnect_max_attempts=2,
+            realtime_reconnect_base_delay_ms=1,
+        )
+        session = VisitorRealtimeSession(
+            browser,
+            "visitor_a",
+            "sess_1",
+            settings,
+            FakeConversationService(),
+            primary,
+            qwen_client_factory=factory,
+        )
+        await session.open()
+        recovered = await session._try_reconnect(primary)
+        return recovered, session._reconnect_failures
+
+    recovered, failures = asyncio.run(scenario())
+
+    assert recovered is False
+    assert failures == 2

@@ -1,0 +1,38 @@
+<style>
+  .tour-wrap{max-width:1080px;margin:0 auto}.tour-summary{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}.tour-summary span{padding:7px 11px;border-radius:999px;background:#e5f2ed;color:#275e58;font-size:11px;font-weight:700}
+  .filmstrip{position:relative;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:30px 0 20px}.filmstrip:before{content:'';position:absolute;left:5%;right:5%;top:23px;height:2px;background:linear-gradient(90deg,#4fb6a2,#e7bd63,#4fb6a2);opacity:.6}
+  .beat{position:relative;z-index:1;padding-top:45px}.beat-dot{position:absolute;top:13px;left:50%;width:20px;height:20px;transform:translateX(-50%);border-radius:50%;background:#f7fbf9;border:5px solid #4d9f91;box-shadow:0 0 0 5px rgba(77,159,145,.13)}.beat.hero .beat-dot{border-color:#e7bd63;box-shadow:0 0 0 5px rgba(231,189,99,.16),0 0 20px rgba(231,189,99,.45)}
+  .scene{height:218px;overflow:hidden;border-radius:16px;border:1px solid rgba(34,108,97,.2);background:#f7fbf9;box-shadow:0 12px 26px rgba(21,66,62,.08)}.scene-art{position:relative;height:90px;overflow:hidden;background:linear-gradient(155deg,#0d7068,#063c3e 60%,#061f28);color:#fff}.scene-art:before{content:'';position:absolute;inset:36% -10% -30%;border-radius:50% 50% 0 0;background:linear-gradient(rgba(62,175,159,.35),rgba(4,31,35,.8));transform:perspective(150px) rotateX(55deg)}
+  .scene-art .orb{position:absolute;width:16px;height:16px;border-radius:50%;background:#f6cf73;box-shadow:0 0 18px #f6cf73}.scene-art .route{position:absolute;height:2px;background:linear-gradient(90deg,transparent,#77ebd1,#f6cf73);transform-origin:left;box-shadow:0 0 8px #77ebd1}.scene-art .landmark{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);font-size:22px;filter:drop-shadow(0 0 9px rgba(255,255,255,.4))}.scene-art .panel{position:absolute;right:7px;bottom:7px;padding:5px 7px;border-radius:6px;background:rgba(4,45,44,.72);font-size:7px;border:1px solid rgba(255,255,255,.18)}
+  .scene-copy{padding:11px}.scene-copy time{display:block;color:#b18737;font-size:9px;font-weight:800;letter-spacing:.08em}.scene-copy h3{margin:5px 0;font-size:13px}.scene-copy p{margin:0;color:#5a716e;font-size:10px;line-height:1.5}.scene-copy em{display:block;margin-top:7px;color:#2f766d;font-size:9px;font-style:normal;font-weight:700}
+  .control-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:10px;padding:12px;border-radius:16px;background:linear-gradient(135deg,#0d5b55,#073c3a);color:#eefaf6}.control{padding:10px 12px;border-radius:11px;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.07)}.control b{display:block;font-size:11px;color:#f4d486}.control small{font-size:9px;opacity:.72}
+  .design-note{margin:16px 0;padding:14px 16px;border-left:3px solid #e7bd63;background:#fbf7eb;color:#536a66;font-size:12px;line-height:1.6}.approval{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}.approval .option{margin:0}
+  @media(max-width:1000px){.filmstrip{grid-template-columns:repeat(2,1fr)}.filmstrip:before{display:none}.beat{padding-top:8px}.beat-dot{display:none}.control-bar{grid-template-columns:1fr 1fr}}@media(max-width:600px){.filmstrip,.approval,.control-bar{grid-template-columns:1fr}}
+</style>
+
+<div class="tour-wrap">
+  <div class="label">DESIGN SECTION 02 · CINEMATIC TIMELINE</div>
+  <h2>78 秒灵山经典巡游</h2>
+  <p class="subtitle">节奏采用“静—动—仰—暖—开”：先建立空间，再逐步增强情绪，最后自然展开自由探索界面。</p>
+  <div class="tour-summary"><span>总长约 78 秒</span><span>4 个文化站点</span><span>3 次数字人短暂展开</span><span>全程可暂停 / 跳过 / 接管</span><span>本地音频零等待</span></div>
+
+  <div class="filmstrip">
+    <div class="beat"><div class="beat-dot"></div><div class="scene"><div class="scene-art"><div class="landmark">◌</div><div class="route" style="left:15%;top:65%;width:64%;transform:rotate(-12deg)"></div><div class="orb" style="left:18%;top:58%"></div></div><div class="scene-copy"><time>00–06 秒</time><h3>湖光启幕</h3><p>地图由湖面倒影溶解进入 3D 鸟瞰，经典路线以微光显现。</p><em>不讲话，先让画面呼吸</em></div></div></div>
+
+    <div class="beat"><div class="beat-dot"></div><div class="scene"><div class="scene-art"><div class="landmark">门</div><div class="route" style="left:14%;top:70%;width:70%;transform:rotate(-20deg)"></div><div class="orb" style="left:55%;top:42%"></div><div class="panel">灵山大照壁</div></div><div class="scene-copy"><time>06–17 秒</time><h3>大照壁 · 入境</h3><p>镜头低空推近，光球首次出现，用一句话建立“入境”主题。</p><em>语音 8 秒 · 无数字人卡</em></div></div></div>
+
+    <div class="beat"><div class="beat-dot"></div><div class="scene"><div class="scene-art"><div class="landmark">水</div><div class="route" style="left:12%;top:56%;width:76%;transform:rotate(8deg)"></div><div class="orb" style="left:72%;top:54%"></div><div class="panel">九龙灌浴 · 故事展开</div></div><div class="scene-copy"><time>17–32 秒</time><h3>九龙灌浴 · 动</h3><p>镜头绕水景半环，流光产生水波扩散，侧边短暂展开讲解卡。</p><em>语音 11 秒 · 讲解卡 8 秒</em></div></div></div>
+
+    <div class="beat hero"><div class="beat-dot"></div><div class="scene"><div class="scene-art"><div class="landmark" style="font-size:34px">佛</div><div class="route" style="left:18%;top:70%;width:62%;transform:rotate(-32deg)"></div><div class="orb" style="left:48%;top:28%"></div><div class="panel">灵山大佛 · 核心站</div></div><div class="scene-copy"><time>32–50 秒</time><h3>灵山大佛 · 仰</h3><p>镜头由山脚向上抬升，音乐与光线达到峰值，数字人讲解卡展开。</p><em>语音 14 秒 · 全程主高潮</em></div></div></div>
+
+    <div class="beat"><div class="beat-dot"></div><div class="scene"><div class="scene-art"><div class="landmark">宫</div><div class="route" style="left:20%;top:64%;width:64%;transform:rotate(18deg)"></div><div class="orb" style="left:64%;top:44%"></div><div class="panel">灵山梵宫 · 光影</div></div><div class="scene-copy"><time>50–66 秒</time><h3>灵山梵宫 · 暖</h3><p>画面转为暖金色，镜头平缓落位，用建筑与文化收束情绪。</p><em>语音 11 秒 · 讲解卡 8 秒</em></div></div></div>
+
+    <div class="beat"><div class="beat-dot"></div><div class="scene"><div class="scene-art"><div class="landmark">✦</div><div class="route" style="left:12%;top:56%;width:76%"></div><div class="orb" style="left:78%;top:50%"></div><div class="panel">现在，由你决定下一站</div></div><div class="scene-copy"><time>66–78 秒</time><h3>交还控制 · 开</h3><p>路线全景回收，老人、亲子、摄影三个入口浮现，侧边面板展开。</p><em>最后一句引导评委接管</em></div></div></div>
+  </div>
+
+  <div class="control-bar"><div class="control"><b>Space · 暂停 / 继续</b><small>镜头、语音和时间轴同步冻结</small></div><div class="control"><b>Esc · 跳过</b><small>平滑收束到自由探索</small></div><div class="control"><b>点击地图 · 接管</b><small>确认后停止自动镜头</small></div><div class="control"><b>重新巡游</b><small>从当前页面随时重播</small></div></div>
+
+  <div class="design-note"><strong>稳定性约束：</strong>默认巡游不等待真实 AI，也不请求实时路线；网络地图在任一时刻失败，导演保持当前秒数并切换本地场景，语音与时间轴不中断。</div>
+
+  <div class="approval options"><div class="option" data-choice="timeline-approved" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>时间线符合预期</h3><p>继续设计自由探索和画像路线切换。</p></div></div><div class="option" data-choice="timeline-revise" onclick="toggleSelect(this)"><div class="letter">↺</div><div class="content"><h3>需要调整节奏</h3><p>请在终端说明希望增减的站点或时间。</p></div></div></div>
+</div>

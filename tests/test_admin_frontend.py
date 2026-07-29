@@ -54,6 +54,15 @@ def test_admin_documents_page_and_assets_are_served(tmp_path: Path):
     assert "confirm(" in script.text
 
 
+def test_admin_root_uses_analytics_as_the_unified_entry(tmp_path: Path):
+    app = create_app(build_pipeline(tmp_path))
+
+    response = request_path(app, "/admin")
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/admin/analytics"
+
+
 def test_admin_attractions_page_and_crud_assets_are_served(tmp_path: Path):
     app = create_app(build_pipeline(tmp_path))
 

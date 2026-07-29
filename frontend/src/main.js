@@ -12,6 +12,7 @@ import "./visitor-pages.css";
 import "./visitor-services.css";
 import "./visitor-services-responsive.css";
 import "./map-places.css";
+import "./route-transition.css";
 
 const router = createRouter({
   history: createWebHistory(),

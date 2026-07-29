@@ -9,11 +9,11 @@ import {
   resolveAvatarAudioState,
   resolveAvatarCaption,
 } from "../lib/realtimeProtocol";
+import { createRealtimeEventHandler } from "../lib/realtimeSessionEvents.js";
 import {
   createTailProtection,
   loadAvatarPreference,
   normalizeAvatarId,
-  saveAvatarPreference,
   usePcmAudio,
 } from "../features/digital-human";
 import { findSuccessfulRouteSource } from "../lib/routeSummary.js";
@@ -26,6 +26,7 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
   const serviceState = ref("正在连接");
   const avatarState = ref("idle");
   const avatarId = ref(loadAvatarPreference());
+  const pendingAvatarId = ref("");
   const avatarSynchronized = ref(false);
   const liveTranscript = ref("");
   const assistantTranscript = ref("");
@@ -38,6 +39,12 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
   let stopRecordingRequested = false;
   let capturedAudioChunks = 0;
   const tailProtection = createTailProtection();
+  // 浏览器 WS 有限次自动重连：与后端 turn.reset 对齐，避免闪断立即判失败。
+  const MAX_BROWSER_RECONNECT = 3;
+  let intentionalDisconnect = false;
+  let reconnectAttempts = 0;
+  let reconnectTimer = null;
+  let lastConnectSessionId = currentSessionId.value;
 
   const audio = usePcmAudio({
     onCaptureChunk: (chunk) => {
@@ -55,8 +62,37 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
       });
     },
   });
+
+  function sendJson(event) {
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(event));
+  }
+
+  const { handleServerEvent, failActiveMessage } = createRealtimeEventHandler({
+    mode,
+    messages,
+    sources,
+    confidence,
+    serviceState,
+    avatarState,
+    avatarId,
+    pendingAvatarId,
+    avatarSynchronized,
+    liveTranscript,
+    assistantTranscript,
+    activeTurnId,
+    transcriptConfirmation,
+    correctionNotice,
+    currentSessionId,
+    audio,
+    sendJson,
+    onSessionChanged,
+  });
+
   const isLoading = computed(() => isRealtimeBusy(activeTurnId.value, audio.playbackActive.value));
-  const avatarReady = computed(() => mode.value !== "avatar" || avatarSynchronized.value);
+  const avatarReady = computed(() =>
+    mode.value !== "avatar"
+    || (avatarSynchronized.value && !pendingAvatarId.value),
+  );
   const avatarCaption = computed(() =>
     resolveAvatarCaption(assistantTranscript.value, liveTranscript.value),
   );
@@ -64,17 +100,65 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
     Boolean(findSuccessfulRouteSource(sources.value)),
   );
 
-  function connect(sessionId = currentSessionId.value) {
-    disconnect(false);
+  function clearReconnectTimer() {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  }
+
+  function closeSocketOnly() {
+    if (!socket) return;
+    socket.onopen = null;
+    socket.onmessage = null;
+    socket.onerror = null;
+    socket.onclose = null;
+    socket.close();
+    socket = null;
+  }
+
+  function scheduleReconnect(sessionId) {
+    if (intentionalDisconnect || reconnectAttempts >= MAX_BROWSER_RECONNECT) {
+      socketState.value = "closed";
+      avatarSynchronized.value = false;
+      pendingAvatarId.value = "";
+      if (activeTurnId.value) failActiveMessage("连接已断开，请重试。", true);
+      return;
+    }
+    reconnectAttempts += 1;
+    const delayMs = 500 * (2 ** (reconnectAttempts - 1));
+    socketState.value = "connecting";
+    serviceState.value = `连接断开，正在重连（${reconnectAttempts}/${MAX_BROWSER_RECONNECT}）`;
+    clearReconnectTimer();
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect(sessionId, { fromReconnect: true });
+    }, delayMs);
+  }
+
+  function connect(sessionId = currentSessionId.value, options = {}) {
+    const fromReconnect = Boolean(options.fromReconnect);
+    lastConnectSessionId = sessionId;
+    clearReconnectTimer();
+    if (!fromReconnect) {
+      intentionalDisconnect = false;
+      reconnectAttempts = 0;
+    }
+    // 重建 socket 时不标 intentional，避免打断自动重连预算。
+    closeSocketOnly();
     // Every socket must re-acknowledge the role so a reconnect cannot reuse stale voice state.
     avatarSynchronized.value = false;
+    pendingAvatarId.value = "";
     socketState.value = "connecting";
     connectPromise = new Promise((resolve) => {
-      socket = new WebSocket(buildRealtimeUrl(window.location, visitorId, sessionId));
+      socket = new WebSocket(
+        buildRealtimeUrl(window.location, visitorId, sessionId, avatarId.value),
+      );
       socket.binaryType = "arraybuffer";
       socket.onopen = () => {
+        reconnectAttempts = 0;
         socketState.value = "open";
-        serviceState.value = "智能导游在线";
+        serviceState.value = fromReconnect ? "连接已恢复" : "智能导游在线";
         resolve();
       };
       socket.onmessage = async ({ data }) => {
@@ -88,7 +172,11 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
           }
           return;
         }
-        handleServerEvent(JSON.parse(data));
+        try {
+          handleServerEvent(JSON.parse(data));
+        } catch {
+          serviceState.value = "收到异常消息，已忽略该帧";
+        }
       };
       socket.onerror = () => {
         serviceState.value = "连接异常，正在等待恢复";
@@ -96,9 +184,15 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
         resolve();
       };
       socket.onclose = () => {
-        socketState.value = "closed";
-        avatarSynchronized.value = false;
-        if (activeTurnId.value) failActiveMessage("连接已断开，请重试。", true);
+        socket = null;
+        if (intentionalDisconnect) {
+          socketState.value = "closed";
+          avatarSynchronized.value = false;
+          pendingAvatarId.value = "";
+          resolve();
+          return;
+        }
+        scheduleReconnect(lastConnectSessionId);
         resolve();
       };
     });
@@ -237,10 +331,11 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
 
   function setAvatar(nextAvatarId) {
     const normalized = normalizeAvatarId(nextAvatarId);
-    if (normalized !== avatarId.value) cancelResponse();
-    avatarId.value = saveAvatarPreference(globalThis.localStorage, normalized);
+    if (normalized === avatarId.value || pendingAvatarId.value) return;
+    cancelResponse();
+    pendingAvatarId.value = normalized;
     avatarSynchronized.value = false;
-    sendJson(buildAvatarSetEvent(avatarId.value));
+    sendJson(buildAvatarSetEvent(normalized));
     serviceState.value = "正在切换数字人形象";
     avatarState.value = "idle";
   }
@@ -277,169 +372,6 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
     serviceState.value = "正在检索景区资料";
   }
 
-  function handleServerEvent(event) {
-    if (event.type === "session.ready") {
-      // Reassert local mode after every connection because mode changes made while connecting are otherwise lost.
-      sendJson(buildModeSetEvent(mode.value));
-      avatarSynchronized.value = false;
-      sendJson(buildAvatarSetEvent(avatarId.value));
-      if (!event.upstream_available) serviceState.value = "语音服务暂不可用，可继续尝试文字回答";
-      return;
-    }
-    if (event.type === "avatar.changed") {
-      avatarId.value = saveAvatarPreference(globalThis.localStorage, event.avatar_id);
-      avatarSynchronized.value = true;
-      serviceState.value = mode.value === "avatar" ? "数字人已就绪" : serviceState.value;
-      return;
-    }
-    if (event.type === "session.bound" && event.session_id) {
-      currentSessionId.value = event.session_id;
-      localStorage.setItem("lingjing_current_session_id", event.session_id);
-      return;
-    }
-    if (event.type === "user.transcript.delta") {
-      if (event.turn_id && event.turn_id !== activeTurnId.value) return;
-      liveTranscript.value += event.delta || "";
-      return;
-    }
-    if (event.type === "user.transcript.done") {
-      if (event.turn_id !== activeTurnId.value) return;
-      liveTranscript.value = event.text || liveTranscript.value;
-      ensureVoiceMessages(event.turn_id, liveTranscript.value);
-      transcriptConfirmation.value = null;
-      correctionNotice.value = event.correction?.applied ? "已按景区词典纠正" : "";
-      avatarState.value = "thinking";
-      return;
-    }
-    if (event.type === "user.transcript.confirmation_required") {
-      if (event.turn_id !== activeTurnId.value) return;
-      transcriptConfirmation.value = {
-        turnId: event.turn_id,
-        text: event.text || liveTranscript.value,
-        candidates: event.candidates || [],
-      };
-      liveTranscript.value = transcriptConfirmation.value.text;
-      avatarState.value = "idle";
-      serviceState.value = "转写结果需要确认";
-      return;
-    }
-    if (event.type === "agent.meta") {
-      if (event.turn_id !== activeTurnId.value) return;
-      sources.value = event.sources || [];
-      confidence.value = formatConfidence(event.confidence);
-      return;
-    }
-    if (event.type === "assistant.text.delta") {
-      if (event.turn_id !== activeTurnId.value) return;
-      const delta = event.delta || "";
-      ensureAssistantMessage(event.turn_id).content += delta;
-      assistantTranscript.value += delta;
-      return;
-    }
-    if (event.type === "assistant.text.done") {
-      if (event.turn_id !== activeTurnId.value) return;
-      const message = ensureAssistantMessage(event.turn_id);
-      message.content = event.text || message.content;
-      assistantTranscript.value = message.content;
-      return;
-    }
-    if (event.type === "turn.reset") {
-      if (event.turn_id !== activeTurnId.value) return;
-      const message = ensureAssistantMessage(event.turn_id);
-      message.content = "";
-      audio.clearPlayback();
-      avatarState.value = "thinking";
-      serviceState.value = "连接已恢复，正在重新生成";
-      return;
-    }
-    if (event.type === "assistant.audio.started") {
-      if (event.turn_id !== activeTurnId.value) return;
-      avatarState.value = resolveAvatarAudioState({
-        eventType: event.type,
-        playbackActive: audio.playbackActive.value,
-        turnActive: true,
-      });
-      return;
-    }
-    if (event.type === "assistant.audio.done") {
-      if (event.turn_id !== activeTurnId.value) return;
-      avatarState.value = resolveAvatarAudioState({
-        eventType: event.type,
-        playbackActive: audio.playbackActive.value,
-        turnActive: true,
-      });
-      return;
-    }
-    if (event.type === "turn.completed") {
-      if (event.turn_id !== activeTurnId.value) return;
-      const message = ensureAssistantMessage(event.turn_id);
-      message.pending = false;
-      message.sources = sources.value;
-      activeTurnId.value = "";
-      avatarState.value = resolveAvatarAudioState({
-        eventType: event.type,
-        playbackActive: audio.playbackActive.value,
-        turnActive: false,
-      });
-      serviceState.value = "回答完成";
-      onSessionChanged?.();
-      return;
-    }
-    if (event.type === "turn.cancelled") {
-      if (event.turn_id !== activeTurnId.value) return;
-      audio.clearPlayback();
-      activeTurnId.value = "";
-      avatarState.value = "idle";
-      return;
-    }
-    if (event.type === "error") {
-      serviceState.value = event.message || "实时服务异常";
-      if (!event.recoverable) failActiveMessage(serviceState.value, true);
-    }
-  }
-
-  function ensureVoiceMessages(turnId, transcript) {
-    if (!messages.value.some((message) => message.id === `${turnId}_user`)) {
-      messages.value.push({ id: `${turnId}_user`, role: "user", content: transcript, voice: true });
-    }
-    ensureAssistantMessage(turnId, transcript);
-  }
-
-  function ensureAssistantMessage(turnId, retryQuestion = "") {
-    let message = messages.value.find((item) => item.id === turnId && item.role === "assistant");
-    if (!message) {
-      message = {
-        id: turnId,
-        role: "assistant",
-        content: "",
-        pending: true,
-        retryQuestion,
-      };
-      messages.value.push(message);
-    }
-    if (retryQuestion && !message.retryQuestion) message.retryQuestion = retryQuestion;
-    return message;
-  }
-
-  function failActiveMessage(message, retryable) {
-    // Stop buffered speech on failures so an error state cannot keep talking with stale lip movement.
-    audio.clearPlayback();
-    if (activeTurnId.value) {
-      const target = ensureAssistantMessage(activeTurnId.value);
-      target.error = message;
-      target.retryable = retryable;
-      target.pending = false;
-      if (!target.retryQuestion) {
-        const targetIndex = messages.value.indexOf(target);
-        target.retryQuestion = [...messages.value.slice(0, targetIndex)]
-          .reverse()
-          .find((item) => item.role === "user")?.content || "";
-      }
-    }
-    activeTurnId.value = "";
-    avatarState.value = "error";
-  }
-
   function restoreMessages(storedMessages) {
     messages.value = (storedMessages || []).map((message) => ({
       id: `stored_${message.message_id}`,
@@ -465,13 +397,12 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
   }
 
   function disconnect(clearAudio = true) {
+    intentionalDisconnect = true;
+    clearReconnectTimer();
+    reconnectAttempts = 0;
     tailProtection.cancel();
     if (clearAudio) audio.clearPlayback();
-    if (socket) {
-      socket.onclose = null;
-      socket.close();
-      socket = null;
-    }
+    closeSocketOnly();
     socketState.value = "closed";
   }
 
@@ -484,10 +415,6 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
     if (avatarState.value === "listening" || avatarState.value === "speaking") {
       avatarState.value = activeTurnId.value ? "thinking" : "idle";
     }
-  }
-
-  function sendJson(event) {
-    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(event));
   }
 
   function markKnowledgeUpdated() {
@@ -508,6 +435,7 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
     serviceState,
     avatarState,
     avatarId,
+    pendingAvatarId,
     avatarSynchronized,
     avatarReady,
     liveTranscript,
@@ -534,9 +462,4 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
     markKnowledgeUpdated,
     suspendForRoute,
   };
-}
-
-function formatConfidence(value) {
-  const number = Number(value);
-  return Number.isNaN(number) ? "--" : `${Math.round(number * 100)}%`;
 }

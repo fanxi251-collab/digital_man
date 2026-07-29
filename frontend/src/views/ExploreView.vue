@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
 import AttractionDetailDrawer from "../components/AttractionDetailDrawer.vue";
+import { filterAttractions } from "../features/explore/lib/attractionFilters.js";
+import { fetchVisitorAttractions } from "../lib/visitorCatalog.js";
 
 const attractions = ref([]);
 const selected = ref(null);
@@ -9,21 +11,16 @@ const category = ref("");
 const loadingState = ref("正在加载景点...");
 
 const categories = computed(() => [...new Set(attractions.value.map((item) => item.category).filter(Boolean))]);
-const visibleAttractions = computed(() => {
-  const query = keyword.value.trim().toLowerCase();
-  return attractions.value.filter((item) => {
-    const matchesText = !query || `${item.name} ${item.summary} ${(item.tags || []).join(" ")}`.toLowerCase().includes(query);
-    return matchesText && (!category.value || item.category === category.value);
-  });
-});
+const visibleAttractions = computed(() => filterAttractions(attractions.value, {
+  keyword: keyword.value,
+  category: category.value,
+}));
 const featured = computed(() => visibleAttractions.value.filter((item) => item.is_featured));
 
 async function loadAttractions() {
   try {
-    const response = await fetch("/api/visitor/attractions");
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
-    attractions.value = data.attractions || [];
+    const data = await fetchVisitorAttractions();
+    attractions.value = data.attractions;
     loadingState.value = attractions.value.length ? "" : "暂无已发布景点。";
   } catch (error) {
     loadingState.value = `景点加载失败：${error.message}`;

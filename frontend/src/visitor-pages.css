@@ -181,9 +181,10 @@ a {
 }
 
 .visitor-content-shell {
+  position: relative;
   min-width: 0;
   height: 100vh;
-  overflow-y: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
 

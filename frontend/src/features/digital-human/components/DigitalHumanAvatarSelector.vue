@@ -3,6 +3,7 @@ import { AVATAR_PROFILES } from "../lib/live2dCharacters.js";
 
 defineProps({
   avatarId: { type: String, default: "mao_pro" },
+  pendingAvatarId: { type: String, default: "" },
   avatarReady: { type: Boolean, default: true },
 });
 
@@ -17,15 +18,16 @@ const emit = defineEmits(["avatar-change"]);
       type="button"
       :class="{
         active: profile.id === avatarId,
-        loading: profile.id === avatarId && !avatarReady,
+        loading: profile.id === pendingAvatarId,
       }"
       :aria-pressed="profile.id === avatarId"
+      :disabled="!avatarReady"
       @click="emit('avatar-change', profile.id)"
     >
       <span>{{ profile.label }}</span>
       <small>
         {{ profile.roleLabel }}
-        <template v-if="profile.id === avatarId && !avatarReady"> · 同步中</template>
+        <template v-if="profile.id === pendingAvatarId"> · 同步中</template>
       </small>
     </button>
   </div>
@@ -58,6 +60,7 @@ button.active {
 }
 
 button.loading { cursor: progress; }
+button:disabled { cursor: not-allowed; opacity: 0.72; }
 
 button:focus-visible {
   outline: 3px solid rgba(47, 118, 109, 0.28);

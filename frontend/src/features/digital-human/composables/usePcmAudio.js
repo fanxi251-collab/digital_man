@@ -2,6 +2,11 @@ import { ref } from "vue";
 import { createCaptureQualityTracker } from "../lib/audioCaptureQuality.js";
 import { float32Metrics } from "../lib/pcmAudio.js";
 
+// 约 60ms 合并窗：减少过碎 BufferSource，同时不拉高可感播放延迟。
+const PLAYBACK_MERGE_WINDOW_MS = 60;
+// 24kHz * 2 bytes * 80ms ≈ 上限，防止单次合并过大。
+const PLAYBACK_MERGE_MAX_BYTES = 24000 * 2 * 0.08;
+
 export function usePcmAudio({ onCaptureChunk, onPlaybackStateChange }) {
   const audioLevel = ref(0);
   const playbackActive = ref(false);
@@ -20,6 +25,10 @@ export function usePcmAudio({ onCaptureChunk, onPlaybackStateChange }) {
   let playbackCursor = 0;
   let playbackGeneration = 0;
   const playbackSources = new Set();
+  let mergeChunks = [];
+  let mergeBytes = 0;
+  let mergeTimer = null;
+  let mergeGeneration = 0;
 
   function setPlaybackActive(active) {
     const nextActive = Boolean(active);
@@ -122,7 +131,17 @@ export function usePcmAudio({ onCaptureChunk, onPlaybackStateChange }) {
     if (microphoneState.value === "recording") microphoneState.value = "finishing";
   }
 
-  async function enqueuePlayback(arrayBuffer) {
+  function clearMergeBuffer() {
+    if (mergeTimer !== null) {
+      clearTimeout(mergeTimer);
+      mergeTimer = null;
+    }
+    mergeChunks = [];
+    mergeBytes = 0;
+    mergeGeneration += 1;
+  }
+
+  async function playPcmBuffer(arrayBuffer) {
     if (!arrayBuffer?.byteLength) return;
     await preparePlayback();
     const pcm = new Int16Array(arrayBuffer);
@@ -150,7 +169,47 @@ export function usePcmAudio({ onCaptureChunk, onPlaybackStateChange }) {
     source.start(startAt);
   }
 
+  async function flushMergedPlayback(expectedGeneration) {
+    if (expectedGeneration !== mergeGeneration) return;
+    mergeTimer = null;
+    if (!mergeChunks.length) return;
+    const total = mergeBytes;
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of mergeChunks) {
+      merged.set(new Uint8Array(chunk), offset);
+      offset += chunk.byteLength;
+    }
+    mergeChunks = [];
+    mergeBytes = 0;
+    await playPcmBuffer(merged.buffer);
+  }
+
+  async function enqueuePlayback(arrayBuffer) {
+    if (!arrayBuffer?.byteLength) return;
+    await preparePlayback();
+    mergeChunks.push(arrayBuffer);
+    mergeBytes += arrayBuffer.byteLength;
+    const generation = mergeGeneration;
+    // 达到时长上限立即冲刷，否则在短窗内合并后续小块。
+    if (mergeBytes >= PLAYBACK_MERGE_MAX_BYTES) {
+      if (mergeTimer !== null) {
+        clearTimeout(mergeTimer);
+        mergeTimer = null;
+      }
+      await flushMergedPlayback(generation);
+      return;
+    }
+    if (mergeTimer !== null) return;
+    mergeTimer = setTimeout(() => {
+      flushMergedPlayback(generation).catch(() => {
+        // 合并失败时下一帧仍可继续收听，避免整条播放链路中断。
+      });
+    }, PLAYBACK_MERGE_WINDOW_MS);
+  }
+
   function clearPlayback() {
+    clearMergeBuffer();
     playbackGeneration += 1;
     stopPlaybackAnalysis();
     for (const source of playbackSources) {

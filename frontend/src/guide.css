@@ -155,13 +155,29 @@
   scrollbar-color: rgba(255, 255, 255, 0.36) transparent;
 }
 
+.guide-view .conversation-timeline:has(.conversation-empty) {
+  width: 100%;
+  padding-inline: 0;
+}
+
 .guide-view .conversation-empty {
   min-height: 100%;
-  align-content: center;
-  gap: 12px;
-  padding: 24px 0 5vh;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  justify-items: center;
+  gap: clamp(18px, 3vw, 42px);
+  padding: 24px clamp(64px, 10vw, 148px) 5vh;
   color: rgba(255, 255, 255, 0.9);
   text-shadow: 0 3px 24px rgba(5, 37, 43, 0.52);
+}
+
+.conversation-empty-copy {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  max-width: 640px;
+  text-align: center;
 }
 
 .welcome-kicker {
@@ -186,25 +202,61 @@
 }
 
 .quick-prompts {
-  width: min(680px, 100%);
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 0;
+  width: max-content;
+}
+
+.quick-prompts--left {
+  justify-self: start;
+  margin-inline-start: clamp(16px, 3vw, 48px);
+}
+
+.quick-prompts--right {
+  justify-self: end;
+  margin-inline-end: clamp(16px, 3vw, 48px);
 }
 
 .quick-prompts button {
-  min-height: 46px;
+  position: relative;
+  min-height: 0;
+  min-width: 46px;
+  max-height: min(52vh, 420px);
   border: 1px solid rgba(255, 255, 255, 0.62);
   border-radius: 999px;
-  padding: 0 18px;
+  padding: 18px 12px;
   background: rgba(250, 253, 252, 0.64);
   color: var(--guide-ink, #143f46);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.55;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
   box-shadow: 0 12px 26px rgba(15, 52, 58, 0.13);
   backdrop-filter: blur(18px) saturate(120%);
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+/* Keep outer buttons on the far edges; inset the lower ones toward the center. */
+.quick-prompts--left button:nth-child(1) {
+  align-self: flex-start;
+}
+
+.quick-prompts--left button:nth-child(2) {
+  align-self: flex-start;
+  margin-left: 3.2rem;
+}
+
+.quick-prompts--right button:nth-child(1) {
+  align-self: flex-end;
+}
+
+.quick-prompts--right button:nth-child(2) {
+  align-self: flex-end;
+  margin-right: 3.2rem;
 }
 
 .quick-prompts button:hover {
@@ -553,6 +605,9 @@
   }
 
   .guide-view .conversation-empty {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 16px;
     padding-bottom: 1vh;
   }
 
@@ -565,14 +620,42 @@
     font-size: 13px;
   }
 
-  .quick-prompts {
-    grid-template-columns: 1fr;
-    gap: 7px;
-    margin-top: 8px;
+  .conversation-empty-copy {
+    order: 1;
+  }
+
+  .quick-prompts--left,
+  .quick-prompts--right {
+    order: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    justify-self: center;
+    gap: 8px;
+    max-width: 100%;
+  }
+
+  .quick-prompts--left button:nth-child(1),
+  .quick-prompts--left button:nth-child(2),
+  .quick-prompts--right button:nth-child(1),
+  .quick-prompts--right button:nth-child(2) {
+    align-self: center;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .quick-prompts--left button:nth-child(2) {
+    margin-left: 12px;
+  }
+
+  .quick-prompts--right button:nth-child(2) {
+    margin-right: 12px;
   }
 
   .quick-prompts button {
-    min-height: 39px;
+    max-height: 220px;
+    min-width: 40px;
+    padding: 14px 10px;
     font-size: 12px;
   }
 

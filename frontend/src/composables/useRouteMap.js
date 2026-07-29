@@ -1,6 +1,5 @@
 import { ref, unref } from "vue";
-
-let amapLoadPromise = null;
+import { fetchMapConfig, loadAmapScript, parseLngLat } from "../lib/amapLoader.js";
 
 export function useRouteMap(target) {
   const notice = ref("暂无路线数据。");
@@ -71,40 +70,4 @@ function resolveMapElement(target) {
   return typeof elementOrId === "string"
     ? document.getElementById(elementOrId)
     : elementOrId || null;
-}
-
-async function fetchMapConfig() {
-  const response = await fetch("/api/tools/map/config");
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-  return response.json();
-}
-
-function loadAmapScript(jsApiKey, securityCode) {
-  if (window.AMap) {
-    return Promise.resolve();
-  }
-  if (amapLoadPromise) {
-    return amapLoadPromise;
-  }
-  // 高德要求安全配置先于 JS API 脚本生效，否则新申请的 Web 端 Key 会校验失败。
-  window._AMapSecurityConfig = { securityJsCode: securityCode };
-  amapLoadPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(jsApiKey)}`;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("高德 JS API 加载失败"));
-    document.head.appendChild(script);
-  });
-  return amapLoadPromise;
-}
-
-function parseLngLat(point) {
-  const [lng, lat] = String(point || "").split(",").map(Number);
-  if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
-    return null;
-  }
-  return [lng, lat];
 }

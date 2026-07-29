@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 import uuid
 
@@ -16,6 +17,12 @@ ConnectFactory = Callable[..., Awaitable[Any]]
 
 class QwenRealtimeError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class QwenRealtimeSessionConfig:
+    voice: str
+    instructions: str
 
 
 class QwenAudioRealtimeClient:
@@ -38,9 +45,17 @@ class QwenAudioRealtimeClient:
             host = "dashscope.aliyuncs.com"
         return f"wss://{host}/api-ws/v1/realtime?model={self.settings.realtime_model}"
 
-    async def open(self, history: list[dict[str, str]]) -> None:
+    async def open(
+        self,
+        history: list[dict[str, str]],
+        session_config: QwenRealtimeSessionConfig | None = None,
+    ) -> None:
         if not self.settings.llm_api_key:
             raise QwenRealtimeError("未配置 LJAPI_KEY，无法连接实时语音模型。")
+        config = session_config or QwenRealtimeSessionConfig(
+            voice=self.settings.realtime_voice,
+            instructions=self.settings.realtime_instructions,
+        )
         self.socket = await self.connect_factory(
             self.endpoint,
             additional_headers={"Authorization": f"Bearer {self.settings.llm_api_key}"},
@@ -56,8 +71,8 @@ class QwenAudioRealtimeClient:
                 "type": "session.update",
                 "session": {
                     "modalities": ["text"],
-                    "voice": self.settings.realtime_voice,
-                    "instructions": self.settings.realtime_instructions,
+                    "voice": config.voice,
+                    "instructions": config.instructions,
                     "max_history_turns": self.settings.realtime_history_turns,
                     "turn_detection": None,
                 },
@@ -66,6 +81,12 @@ class QwenAudioRealtimeClient:
         updated = await self.receive_event()
         if updated.get("type") != "session.updated":
             raise QwenRealtimeError("Qwen 实时会话配置失败。")
+        actual_voice = str((updated.get("session") or {}).get("voice") or "").strip()
+        if actual_voice != config.voice:
+            await self.close()
+            raise QwenRealtimeError(
+                f"Qwen 实时会话音色不一致：请求 {config.voice}，实际 {actual_voice}。"
+            )
         for message in history[-self.settings.realtime_history_turns * 2 :]:
             await self.inject_message(message.get("role", "user"), message.get("content", ""))
 
@@ -124,13 +145,12 @@ class QwenAudioRealtimeClient:
     async def clear_audio(self) -> None:
         await self.send_event({"type": "input_audio_buffer.clear"})
 
-    async def create_response(self, mode: str, voice: str | None = None) -> None:
+    async def create_response(self, mode: str) -> None:
         modalities = ["audio", "text"] if mode == "avatar" else ["text"]
-        response: dict[str, Any] = {"modalities": modalities}
-        # Per-turn voice belongs only to avatar responses so text mode never requests audio features.
-        if mode == "avatar" and voice:
-            response["voice"] = voice
-        await self.send_event({"type": "response.create", "response": response})
+        # Voice is connection-scoped by Qwen, so per-turn requests only control output modalities.
+        await self.send_event(
+            {"type": "response.create", "response": {"modalities": modalities}}
+        )
 
     async def cancel_response(self) -> None:
         await self.send_event({"type": "response.cancel"})

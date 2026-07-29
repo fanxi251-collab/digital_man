@@ -26,7 +26,9 @@ python -m pip install -e .
 
 原生前端页面和静态资源。
 
-- 游客端页面：`/visitor`，包含导游、探索、地图、美食和反馈五个一级页面
+- 站点默认入口：`/`，自动进入游客端
+- 游客端统一入口：`/visitor`，包含导游、探索、地图、美食和反馈五个一级页面
+- 管理端统一入口：`/admin`，自动进入游客分析总览
 - 管理端资料页面：`/admin/documents`
 - 管理端景点页面：`/admin/attractions`
 - 管理端游客分析：`/admin/analytics`

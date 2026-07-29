@@ -21,8 +21,8 @@ class FakeAgentExecutor:
     def __init__(self) -> None:
         self.contexts = []
 
-    def collect_evidence(self, question, conversation_context=None):
-        self.contexts.append(conversation_context)
+    def collect_evidence(self, question, conversation_context=None, profile="full"):
+        self.contexts.append((conversation_context, profile))
         return AgentEvidence(
             question=conversation_context.standalone_question,
             sources=[
@@ -74,6 +74,14 @@ def test_prepare_turn_creates_session_and_formats_temporary_evidence(
     assert store.list_messages(prepared.session.session_id, "visitor_a") == []
 
 
+def test_prepare_turn_uses_lite_profile_by_default(tmp_path: Path, pg_dsn: str, conversations_schema: str):
+    service, _, agent = build_service(tmp_path, pg_dsn, conversations_schema)
+
+    service.prepare_turn("灵山胜境几点开放？", "visitor_a", "")
+
+    assert agent.contexts[-1][1] == "lite"
+
+
 def test_prepare_turn_writes_mode_specific_answer_contract_into_evidence_prompt(tmp_path: Path, pg_dsn: str, conversations_schema: str):
     service, _, _ = build_service(tmp_path, pg_dsn, conversations_schema)
 
@@ -121,7 +129,7 @@ def test_prepare_turn_uses_same_session_history_across_modes(tmp_path: Path, pg_
 
     assert second.session.session_id == first.session.session_id
     assert "灵山胜境" in second.evidence.question
-    assert agent.contexts[-1].history[-1].role == "assistant"
+    assert agent.contexts[-1][0].history[-1].role == "assistant"
     assert [message["role"] for message in service.upstream_history(first.session.session_id, "visitor_a")] == [
         "user",
         "assistant",
@@ -141,7 +149,7 @@ def test_prepare_turn_preserves_explicit_internal_route_in_existing_session(tmp_
 
     assert route.evidence.question == "从五明桥到五智门怎么走"
     assert route.evidence.needs_clarification is False
-    assert agent.contexts[-1].standalone_question == "从五明桥到五智门怎么走"
+    assert agent.contexts[-1][0].standalone_question == "从五明桥到五智门怎么走"
 
 
 def test_avatar_turn_routes_cleaned_internal_attraction_names_through_amap(tmp_path: Path, pg_dsn: str, conversations_schema: str):

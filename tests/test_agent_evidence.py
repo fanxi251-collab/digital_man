@@ -132,3 +132,77 @@ def test_existing_history_internal_route_collects_one_successful_amap_source(tmp
     assert [trace.tool_name for trace in evidence.tool_trace] == ["amap_route"]
     assert evidence.tool_trace[0].status == "ok"
     assert evidence.sources[0].metadata["route_summary"]["mode"] == "walking"
+
+
+def test_lite_profile_skips_query_rewrite_and_document_search(tmp_path: Path):
+    settings = replace(
+        AppSettings.for_workspace(tmp_path),
+        agent_fast_tool_path_enabled=False,
+        agent_use_query_rewrite=True,
+        agent_use_document_search=True,
+        agent_use_map_tools=False,
+        question_expansion_enabled=False,
+    )
+    executor = AgentExecutor(settings=settings, tools=[FakeRagTool()])
+
+    evidence = executor.collect_evidence("灵山胜境有什么特色？", profile="lite")
+
+    assert [trace.tool_name for trace in evidence.tool_trace] == ["rag_search"]
+
+
+class SlowTool:
+    def __init__(self, name: str, delay: float, content: str) -> None:
+        self.name = name
+        self.delay = delay
+        self.content = content
+        self.started_at: list[float] = []
+        # AgentExecutor 要求至少一个工具挂着 pipeline 引用。
+        self.pipeline = SimpleNamespace(
+            answer_generator=RaisingAnswerGenerator(),
+            vector_store=EmptyVectorStore(),
+        )
+
+    def run(self, question: str) -> ToolResult:
+        import time
+
+        self.started_at.append(time.perf_counter())
+        time.sleep(self.delay)
+        return ToolResult(
+            status="ok",
+            message=self.name,
+            sources=[
+                SourceChunk(
+                    chunk_id=f"{self.name}_1",
+                    document_id=self.name,
+                    document_name=f"{self.name}.md",
+                    content=self.content,
+                    score=0.8,
+                    metadata={"source_type": "knowledge"},
+                )
+            ],
+        )
+
+
+def test_collect_evidence_runs_independent_tools_in_parallel(tmp_path: Path):
+    settings = replace(
+        AppSettings.for_workspace(tmp_path),
+        agent_fast_tool_path_enabled=False,
+        agent_use_query_rewrite=False,
+        agent_use_document_search=True,
+        agent_use_map_tools=False,
+        kg_enabled=False,
+        question_expansion_enabled=False,
+    )
+    rag = SlowTool("rag_search", 0.05, "rag")
+    document = SlowTool("document_search", 0.05, "doc")
+    executor = AgentExecutor(settings=settings, tools=[rag, document])
+
+    import time
+
+    started = time.perf_counter()
+    evidence = executor.collect_evidence("灵山胜境有什么特色？", profile="full")
+    elapsed = time.perf_counter() - started
+
+    assert {trace.tool_name for trace in evidence.tool_trace} == {"rag_search", "document_search"}
+    assert elapsed < 0.09
+    assert abs(rag.started_at[0] - document.started_at[0]) < 0.04

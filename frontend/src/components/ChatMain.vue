@@ -13,6 +13,7 @@ const props = defineProps({
   isLoading: { type: Boolean, required: true },
   avatarState: { type: String, required: true },
   avatarId: { type: String, default: "mao_pro" },
+  pendingAvatarId: { type: String, default: "" },
   avatarReady: { type: Boolean, default: true },
   audioLevel: { type: Number, required: true },
   inputLevel: { type: Number, default: 0 },
@@ -62,6 +63,7 @@ function submitQuestion() {
         v-if="mode === 'avatar'"
         class="topbar-avatar-selector"
         :avatar-id="avatarId"
+        :pending-avatar-id="pendingAvatarId"
         :avatar-ready="avatarReady"
         @avatar-change="emit('avatar-change', $event)"
       />

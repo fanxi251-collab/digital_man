@@ -10,8 +10,10 @@ const quickPrompts = [
   "第一次来灵山胜境怎么玩？",
   "今天有哪些值得看的表演？",
   "适合老人和孩子的路线怎么走？",
-  "从无锡站到灵山胜境怎么走？",
+  "从灵山大佛到九龙灌浴怎么走？",
 ];
+const leftPrompts = quickPrompts.slice(0, 2);
+const rightPrompts = quickPrompts.slice(2);
 
 function askPrompt(prompt) {
   emit("ask", prompt);
@@ -29,11 +31,18 @@ watch(
 <template>
   <section ref="timeline" class="conversation-timeline" aria-live="polite">
     <div v-if="!messages.length" class="conversation-empty">
-      <p class="welcome-kicker">LINGSHAN · SMART JOURNEY</p>
-      <h2>今天，想怎样遇见灵山？</h2>
-      <p class="welcome-copy">从景点故事、开放时间到行程路线，我会陪你把旅途安排得从容一些。</p>
-      <div class="quick-prompts" aria-label="快捷提问">
-        <button v-for="prompt in quickPrompts" :key="prompt" type="button" @click="askPrompt(prompt)">
+      <div class="quick-prompts quick-prompts--left" aria-label="左侧快捷提问">
+        <button v-for="prompt in leftPrompts" :key="prompt" type="button" @click="askPrompt(prompt)">
+          {{ prompt }}
+        </button>
+      </div>
+      <div class="conversation-empty-copy">
+        <p class="welcome-kicker">LINGSHAN · SMART JOURNEY</p>
+        <h2>今天，想怎样遇见灵山？</h2>
+        <p class="welcome-copy">从景点故事、开放时间到行程路线，我会陪你把旅途安排得从容一些。</p>
+      </div>
+      <div class="quick-prompts quick-prompts--right" aria-label="右侧快捷提问">
+        <button v-for="prompt in rightPrompts" :key="prompt" type="button" @click="askPrompt(prompt)">
           {{ prompt }}
         </button>
       </div>

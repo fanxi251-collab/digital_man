@@ -52,6 +52,16 @@ class AppSettings:
     realtime_voice_haruto: str = "longanxiaoxin"
     realtime_history_turns: int = 6
     realtime_connect_timeout_seconds: int = 15
+    # Realtime 首答：跳过扩写 LLM，并用 lite 证据档减少工具链耗时。
+    realtime_skip_question_expansion: bool = True
+    realtime_evidence_profile: str = "lite"
+    # 上游断线：每次最多 N 次指数退避，成功后清零以便同会话再次恢复。
+    realtime_reconnect_max_attempts: int = 3
+    realtime_reconnect_base_delay_ms: int = 500
+    # 检索结果短缓存，与 answer_cache 共用 knowledge_version 失效。
+    evidence_search_cache_enabled: bool = True
+    evidence_search_cache_ttl_seconds: int = 600
+    evidence_search_cache_max_items: int = 256
     asr_correction_enabled: bool = True
     asr_glossary_path: str = "config/asr_glossary.yml"
     asr_glossary_ttl_seconds: int = 60
@@ -74,6 +84,7 @@ class AppSettings:
     map_api_key: str | None = None
     map_js_api_key: str | None = None
     map_js_security_code: str | None = None
+    map_js_style: str = "amap://styles/normal"
     amap_base_url: str = "https://restapi.amap.com"
     amap_route_default_mode: str = "driving"
     amap_scenic_navigation_radius_km: float = 10.0
@@ -147,6 +158,32 @@ class AppSettings:
                 1,
                 int(_env_value("LJ_REALTIME_CONNECT_TIMEOUT_SECONDS", workspace_env, "15")),
             ),
+            realtime_skip_question_expansion=_env_bool(
+                "REALTIME_SKIP_QUESTION_EXPANSION", workspace_env, True
+            ),
+            realtime_evidence_profile=(
+                _env_value("REALTIME_EVIDENCE_PROFILE", workspace_env, "lite").strip().lower()
+                or "lite"
+            ),
+            realtime_reconnect_max_attempts=max(
+                1,
+                int(_env_value("LJ_REALTIME_RECONNECT_MAX_ATTEMPTS", workspace_env, "3")),
+            ),
+            realtime_reconnect_base_delay_ms=max(
+                0,
+                int(_env_value("LJ_REALTIME_RECONNECT_BASE_DELAY_MS", workspace_env, "500")),
+            ),
+            evidence_search_cache_enabled=_env_bool(
+                "EVIDENCE_SEARCH_CACHE_ENABLED", workspace_env, True
+            ),
+            evidence_search_cache_ttl_seconds=max(
+                1,
+                int(_env_value("EVIDENCE_SEARCH_CACHE_TTL_SECONDS", workspace_env, "600")),
+            ),
+            evidence_search_cache_max_items=max(
+                1,
+                int(_env_value("EVIDENCE_SEARCH_CACHE_MAX_ITEMS", workspace_env, "256")),
+            ),
             asr_correction_enabled=_env_bool("LJ_ASR_CORRECTION_ENABLED", workspace_env, True),
             asr_glossary_path=_env_value(
                 "LJ_ASR_GLOSSARY_PATH", workspace_env, "config/asr_glossary.yml"
@@ -186,6 +223,10 @@ class AppSettings:
             map_api_key=_env_value("MAP_API", workspace_env),
             map_js_api_key=_env_value("MAP_JS_API", workspace_env),
             map_js_security_code=_env_value("MAP_JS_SECURITY_CODE", workspace_env),
+            map_js_style=(
+                _env_value("MAP_JS_STYLE", workspace_env, "amap://styles/normal").strip()
+                or "amap://styles/normal"
+            ),
             amap_base_url=_env_value("AMAP_BASE_URL", workspace_env, "https://restapi.amap.com").rstrip("/"),
             amap_route_default_mode=_env_value("AMAP_ROUTE_DEFAULT_MODE", workspace_env, "driving").strip().lower()
             or "driving",

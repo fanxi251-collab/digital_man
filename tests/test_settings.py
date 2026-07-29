@@ -36,6 +36,12 @@ def test_settings_reads_qwen_api_configuration_from_environment(tmp_path: Path, 
     assert settings.langgraph_max_loops == 1
     assert settings.langgraph_reflection_enabled is True
     assert settings.question_expansion_auto_skip is True
+    assert settings.realtime_skip_question_expansion is True
+    assert settings.realtime_evidence_profile == "lite"
+    assert settings.realtime_reconnect_max_attempts == 3
+    assert settings.realtime_reconnect_base_delay_ms == 500
+    assert settings.evidence_search_cache_enabled is True
+    assert settings.evidence_search_cache_ttl_seconds == 600
     assert settings.agent_fast_tool_path_enabled is True
     assert settings.agent_simple_tool_direct_answer is True
     assert settings.redis_enabled is False
@@ -124,6 +130,15 @@ def test_settings_reads_map_js_security_code_from_environment(tmp_path: Path, mo
 
     assert settings.map_js_api_key == "js-map-key"
     assert settings.map_js_security_code == "js-security-code"
+    assert settings.map_js_style == "amap://styles/normal"
+
+
+def test_settings_reads_custom_map_js_style(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("MAP_JS_STYLE", "amap://styles/macaron")
+
+    settings = AppSettings.for_workspace(tmp_path)
+
+    assert settings.map_js_style == "amap://styles/macaron"
 
 
 def test_settings_reads_neo4j_configuration_from_workspace_env_file(tmp_path: Path, monkeypatch):

@@ -1,0 +1,89 @@
+<style>
+  :root {
+    --ink: #eaf8f2;
+    --deep: #042b2a;
+    --lake: #0a6d68;
+    --jade: #31b59f;
+    --gold: #e7bd63;
+    --glass: rgba(8, 52, 51, .72);
+  }
+  .stage-intro { max-width: 980px; margin: 0 auto 24px; }
+  .stage-intro h2 { margin-bottom: 8px; }
+  .stage-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  .stage-card { position: relative; overflow: hidden; border: 1px solid rgba(49,181,159,.28); border-radius: 20px; background: #072d2d; cursor: pointer; transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease; }
+  .stage-card:hover { transform: translateY(-4px); border-color: var(--gold); box-shadow: 0 20px 42px rgba(2,25,25,.25); }
+  .stage-card.selected { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(231,189,99,.22), 0 20px 42px rgba(2,25,25,.28); }
+  .recommended { position: absolute; z-index: 5; top: 10px; right: 10px; padding: 5px 9px; border-radius: 999px; background: var(--gold); color: #183735; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+  .mini-stage { position: relative; aspect-ratio: 16/10; overflow: hidden; color: var(--ink); background:
+      radial-gradient(circle at 56% 58%, rgba(93,207,184,.22), transparent 25%),
+      linear-gradient(155deg, #0a5957 0%, #073c3b 48%, #031d22 100%); }
+  .mini-stage::before { content: ''; position: absolute; inset: 0; opacity: .26; background-image: linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px); background-size: 30px 30px; transform: perspective(240px) rotateX(58deg) scale(1.5) translateY(18%); }
+  .lake { position: absolute; left: -10%; right: -10%; bottom: -16%; height: 48%; border-radius: 50% 50% 0 0; background: linear-gradient(rgba(43,154,143,.35), rgba(3,27,31,.8)); transform: perspective(220px) rotateX(58deg); }
+  .palace { position: absolute; left: 50%; top: 36%; transform: translate(-50%,-50%); width: 88px; height: 34px; border: 1px solid rgba(231,189,99,.6); background: rgba(231,189,99,.14); clip-path: polygon(8% 100%,8% 55%,20% 55%,26% 30%,38% 30%,50% 0,62% 30%,74% 30%,80% 55%,92% 55%,92% 100%); }
+  .route-svg { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 0 5px rgba(83,255,213,.8)); }
+  .route-svg path { fill: none; stroke: #78f3d3; stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 7 6; animation: flow 1.2s linear infinite; }
+  .route-svg circle { fill: var(--gold); stroke: #fff4cf; stroke-width: 1.5; }
+  @keyframes flow { to { stroke-dashoffset: -26; } }
+  .top-chip { position: absolute; top: 10px; left: 12px; font-size: 9px; letter-spacing: .13em; color: #dff9f1; }
+  .glass { position: absolute; border: 1px solid rgba(255,255,255,.16); background: var(--glass); backdrop-filter: blur(8px); border-radius: 10px; }
+  .route-panel { left: 10px; top: 34px; width: 34%; padding: 10px; }
+  .route-panel b, .ai-panel b { display: block; color: #fff; font-size: 10px; margin-bottom: 6px; }
+  .route-panel span, .ai-panel span { display: block; color: rgba(234,248,242,.72); font-size: 8px; line-height: 1.55; }
+  .timeline { left: 50%; bottom: 10px; width: 70%; height: 27px; transform: translateX(-50%); display: flex; align-items: center; justify-content: space-around; padding: 0 8px; }
+  .timeline i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.45); box-shadow: 0 0 0 3px rgba(255,255,255,.07); }
+  .timeline i.active { background: var(--gold); box-shadow: 0 0 12px var(--gold); }
+  .split-map { position: absolute; inset: 0 31% 0 0; border-right: 1px solid rgba(255,255,255,.13); }
+  .command-panel { position: absolute; top: 0; right: 0; bottom: 0; width: 31%; padding: 18px 12px; background: rgba(3,31,34,.86); }
+  .command-panel h5 { margin: 0 0 7px; color: var(--gold); font-size: 10px; }
+  .command-panel p { margin: 0 0 11px; font-size: 8px; line-height: 1.55; color: rgba(234,248,242,.7); }
+  .metric { height: 21px; margin: 6px 0; border-radius: 7px; background: linear-gradient(90deg, rgba(49,181,159,.38), rgba(49,181,159,.08)); }
+  .ai-orb { position: absolute; right: 15px; top: 38px; width: 44px; height: 44px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #fef1c4, var(--gold) 24%, rgba(49,181,159,.85) 52%, rgba(5,44,44,.05) 72%); box-shadow: 0 0 28px rgba(231,189,99,.55); }
+  .ai-panel { right: 12px; top: 92px; width: 32%; padding: 10px; }
+  .mode-bar { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 5px; }
+  .mode-bar em { padding: 5px 8px; border-radius: 999px; font-size: 7px; font-style: normal; background: rgba(4,43,42,.75); border: 1px solid rgba(255,255,255,.12); }
+  .card-copy { padding: 15px 16px 17px; }
+  .card-copy h3 { margin: 0 0 6px; font-size: 16px; color: #eaf8f2; }
+  .card-copy p { margin: 0; color: rgba(234,248,242,.72); font-size: 12px; line-height: 1.55; }
+  .card-copy small { display: block; margin-top: 10px; color: var(--gold); }
+  @media (max-width: 900px) { .stage-grid { grid-template-columns: 1fr; } }
+</style>
+
+<div class="stage-intro">
+  <div class="label">LINGJING ZHIDAO · BIG SCREEN EXPERIENCE</div>
+  <h2>大屏互动地图应该采用哪种舞台结构？</h2>
+  <p class="subtitle">三种方案都支持 60–90 秒引导巡游和在线地图失败后的本地降级。请重点观察“地图是否始终是主角”以及“评委接管操作是否自然”。</p>
+</div>
+
+<div class="stage-grid">
+  <div class="stage-card" data-choice="panorama" onclick="toggleSelect(this)">
+    <div class="mini-stage">
+      <div class="top-chip">灵境巡游 · 第 03 站</div><div class="lake"></div><div class="palace"></div>
+      <svg class="route-svg" viewBox="0 0 320 200"><path d="M38 150 C78 120, 85 78, 145 92 S230 142, 282 61"/><circle cx="38" cy="150" r="4"/><circle cx="145" cy="92" r="4"/><circle cx="282" cy="61" r="4"/></svg>
+      <div class="glass route-panel"><b>禅意经典线</b><span>灵山大佛 → 梵宫<br/>镜头随路线自动推进</span></div>
+      <div class="glass timeline"><i></i><i class="active"></i><i></i><i></i></div>
+    </div>
+    <div class="card-copy"><h3>A · 全景电影舞台</h3><p>地图完全占满屏幕，信息只以悬浮胶囊短暂出现。视觉最纯粹，适合自动巡游。</p><small>优势：沉浸感最强 · 接管后信息密度较低</small></div>
+  </div>
+
+  <div class="stage-card" data-choice="command" onclick="toggleSelect(this)">
+    <div class="mini-stage">
+      <div class="split-map"><div class="top-chip">实时智慧行程</div><div class="lake"></div><div class="palace"></div>
+        <svg class="route-svg" viewBox="0 0 220 200"><path d="M22 152 C64 122, 92 60, 184 83"/><circle cx="22" cy="152" r="4"/><circle cx="184" cy="83" r="4"/></svg>
+      </div>
+      <div class="command-panel"><h5>AI 行程指挥台</h5><p>预计 2.8 小时 · 步行友好<br/>当前天气：适宜游览</p><div class="metric"></div><div class="metric" style="width:82%"></div><div class="metric" style="width:64%"></div></div>
+    </div>
+    <div class="card-copy"><h3>B · 双栏智慧指挥台</h3><p>地图与 AI 决策面板长期并列，路线原因和数据始终可见，产品感最强。</p><small>优势：信息清晰 · 会削弱电影式全景冲击</small></div>
+  </div>
+
+  <div class="stage-card" data-choice="adaptive" onclick="toggleSelect(this)">
+    <div class="recommended">推荐</div>
+    <div class="mini-stage">
+      <div class="top-chip">LINGJING · IMMERSIVE JOURNEY</div><div class="lake"></div><div class="palace"></div>
+      <svg class="route-svg" viewBox="0 0 320 200"><path d="M34 150 C75 128, 101 72, 162 93 S244 140, 282 54"/><circle cx="34" cy="150" r="4"/><circle cx="162" cy="93" r="4"/><circle cx="282" cy="54" r="4"/></svg>
+      <div class="ai-orb"></div>
+      <div class="glass ai-panel"><b>灵境智导</b><span>前方是梵宫。巡游结束后，我会根据你的停留时间重新规划下一站。</span></div>
+      <div class="mode-bar"><em>◉ 沉浸巡游</em><em>自由探索</em><em>智慧规划</em></div>
+    </div>
+    <div class="card-copy"><h3>C · 动态聚焦舞台</h3><p>巡游时保持全景，进入自由探索后面板从边缘展开；数字人以光球和语音伴随路线。</p><small>优势：视觉、交互与 AI 表达最均衡</small></div>
+  </div>
+</div>

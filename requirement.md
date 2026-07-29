@@ -222,7 +222,7 @@ python -m uvicorn lingjing_ai.api.main:app --host 127.0.0.1 --port 8000 --reload
 
 ```text
 游客端：http://127.0.0.1:8000/visitor
-管理端：http://127.0.0.1:8000/admin/documents
+管理端：http://127.0.0.1:8000/admin
 ```
 
 脚本导入资料：

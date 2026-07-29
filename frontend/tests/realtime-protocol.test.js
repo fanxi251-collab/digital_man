@@ -8,19 +8,66 @@ import {
   pcmRms,
 } from "../src/features/digital-human/lib/pcmAudio.js";
 
-const { buildRealtimeUrl, responseModalities } = realtimeProtocol;
+const { buildRealtimeUrl, responseModalities, resolveAvatarSyncTransition } = realtimeProtocol;
 
 test("realtime URL keeps visitor and optional session identity", () => {
   const url = buildRealtimeUrl(
     { protocol: "https:", host: "example.test" },
     "visitor 1",
     "sess/1",
+    "chitose",
   );
 
   assert.equal(
     url,
-    "wss://example.test/api/visitor/realtime?visitor_id=visitor+1&session_id=sess%2F1",
+    "wss://example.test/api/visitor/realtime?visitor_id=visitor+1&session_id=sess%2F1&avatar_id=chitose",
   );
+});
+
+test("avatar synchronization commits only a confirmed server role", () => {
+  const changing = resolveAvatarSyncTransition(
+    { activeAvatarId: "mao_pro", pendingAvatarId: "chitose", synchronized: false },
+    {
+      type: "avatar.changing",
+      active_avatar_id: "mao_pro",
+      requested_avatar_id: "chitose",
+    },
+  );
+  assert.deepEqual(changing, {
+    activeAvatarId: "mao_pro",
+    pendingAvatarId: "chitose",
+    synchronized: false,
+    persist: false,
+  });
+
+  const changed = resolveAvatarSyncTransition(changing, {
+    type: "avatar.changed",
+    avatar_id: "chitose",
+  });
+  assert.deepEqual(changed, {
+    activeAvatarId: "chitose",
+    pendingAvatarId: "",
+    synchronized: true,
+    persist: true,
+  });
+});
+
+test("failed avatar synchronization retains the previous confirmed role", () => {
+  const failed = resolveAvatarSyncTransition(
+    { activeAvatarId: "mao_pro", pendingAvatarId: "haruto", synchronized: false },
+    {
+      type: "avatar.change_failed",
+      active_avatar_id: "mao_pro",
+      requested_avatar_id: "haruto",
+    },
+  );
+
+  assert.deepEqual(failed, {
+    activeAvatarId: "mao_pro",
+    pendingAvatarId: "",
+    synchronized: true,
+    persist: false,
+  });
 });
 
 test("mode maps to explicit output modalities", () => {

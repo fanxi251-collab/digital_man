@@ -16,6 +16,12 @@ class CachedAnswer:
     expires_at: float
 
 
+@dataclass(frozen=True)
+class CachedSources:
+    sources: list[SourceChunk]
+    expires_at: float
+
+
 class QuestionCache:
     def __init__(self, max_items: int, ttl_seconds: int) -> None:
         self.max_items = max_items
@@ -42,6 +48,48 @@ class QuestionCache:
 
     def clear(self) -> None:
         self._items.clear()
+
+
+class SourceSearchCache:
+    """进程内检索结果短缓存，避免重复问句反复打 embedding / Qdrant。"""
+
+    def __init__(self, max_items: int, ttl_seconds: int) -> None:
+        self.max_items = max_items
+        self.ttl_seconds = ttl_seconds
+        self._items: OrderedDict[str, CachedSources] = OrderedDict()
+
+    def get(self, key: str) -> list[SourceChunk] | None:
+        item = self._items.get(key)
+        if item is None:
+            return None
+        if item.expires_at < time.time():
+            self._items.pop(key, None)
+            return None
+        self._items.move_to_end(key)
+        return list(item.sources)
+
+    def set(self, key: str, sources: list[SourceChunk]) -> None:
+        if self.max_items <= 0 or self.ttl_seconds <= 0:
+            return
+        self._items[key] = CachedSources(
+            sources=list(sources),
+            expires_at=time.time() + self.ttl_seconds,
+        )
+        self._items.move_to_end(key)
+        while len(self._items) > self.max_items:
+            self._items.popitem(last=False)
+
+    def clear(self) -> None:
+        self._items.clear()
+
+
+def evidence_search_cache_key(
+    question: str,
+    knowledge_version: str,
+    retrieval_mode: str,
+    top_k: int,
+) -> str:
+    return f"evidence|{answer_cache_key(question, knowledge_version, retrieval_mode, top_k)}"
 
 
 class RedisBackedQuestionCache:

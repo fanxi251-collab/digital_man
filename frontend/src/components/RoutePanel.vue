@@ -37,7 +37,7 @@ onBeforeUnmount(routeMap.destroy);
     <div id="routeMap" class="route-map" aria-label="高德路线地图"></div>
     <p class="route-notice">{{ routeMap.notice.value }}</p>
     <ol class="route-steps">
-      <li v-if="!summary">暂无路线数据。提问“从无锡站到灵山胜境怎么走”后显示。</li>
+      <li v-if="!summary">暂无路线数据。提问“从灵山大佛到九龙灌浴怎么走”后显示。</li>
       <li v-for="step in (summary?.steps || [])" :key="step.index || step.instruction">
         {{ step.instruction || "继续前行" }}
       </li>

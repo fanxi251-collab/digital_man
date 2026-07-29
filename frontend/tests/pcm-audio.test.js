@@ -11,6 +11,7 @@ import {
 function installPlaybackFakes() {
   const sources = [];
   const animationFrames = new Map();
+  const pendingTimeouts = new Map();
   const analyser = {
     samples: new Float32Array(512),
     connect(target) { this.connectedTo = target; },
@@ -18,6 +19,7 @@ function installPlaybackFakes() {
     getFloatTimeDomainData(target) { target.set(this.samples); },
   };
   let nextAnimationFrame = 0;
+  let nextTimeout = 0;
 
   class FakeAudioContext {
     constructor() {
@@ -66,10 +68,30 @@ function installPlaybackFakes() {
     configurable: true,
     value(handle) { animationFrames.delete(handle); },
   });
+  // 合并窗依赖 setTimeout：测试里改为可冲刷队列，避免真实等待 60ms。
+  Object.defineProperty(globalThis, "setTimeout", {
+    configurable: true,
+    value(callback) {
+      nextTimeout += 1;
+      pendingTimeouts.set(nextTimeout, callback);
+      return nextTimeout;
+    },
+  });
+  Object.defineProperty(globalThis, "clearTimeout", {
+    configurable: true,
+    value(handle) { pendingTimeouts.delete(handle); },
+  });
   return {
     analyser,
     animationFrames,
     sources,
+    async flushMergeTimers() {
+      const callbacks = [...pendingTimeouts.values()];
+      pendingTimeouts.clear();
+      for (const callback of callbacks) {
+        await callback();
+      }
+    },
     runAnimationFrame(samples) {
       analyser.samples.fill(0);
       analyser.samples.set(samples);
@@ -181,7 +203,7 @@ test("tail protection finishes after 300ms and cancellation suppresses commit", 
 });
 
 test("playback remains active until the final queued PCM source ends", async () => {
-  const { sources } = installPlaybackFakes();
+  const { sources, flushMergeTimers } = installPlaybackFakes();
   const playbackStates = [];
   const audio = usePcmAudio({
     onCaptureChunk() {},
@@ -192,23 +214,23 @@ test("playback remains active until the final queued PCM source ends", async () 
   await audio.enqueuePlayback(pcm);
   await audio.enqueuePlayback(pcm);
   await audio.enqueuePlayback(pcm);
+  await flushMergeTimers();
 
   assert.equal(audio.playbackActive.value, true);
   assert.deepEqual(playbackStates, [true]);
+  // 三块在合并窗内合成一个 BufferSource。
+  assert.equal(sources.length, 1);
   sources[0].finish();
-  sources[1].finish();
-  assert.equal(audio.playbackActive.value, true);
-  assert.deepEqual(playbackStates, [true]);
-  sources[2].finish();
   assert.equal(audio.playbackActive.value, false);
   assert.deepEqual(playbackStates, [true, false]);
 });
 
 test("playback analyser continuously follows the audio sent to the speakers", async () => {
-  const { analyser, animationFrames, runAnimationFrame, sources } = installPlaybackFakes();
+  const { analyser, animationFrames, flushMergeTimers, runAnimationFrame, sources } = installPlaybackFakes();
   const audio = usePcmAudio({ onCaptureChunk() {} });
 
   await audio.enqueuePlayback(new Int16Array([1000, -1000]).buffer);
+  await flushMergeTimers();
   assert.equal(sources[0].connectedTo, analyser);
   assert.equal(analyser.fftSize, 512);
   assert.equal(animationFrames.size, 1);
@@ -225,7 +247,7 @@ test("playback analyser continuously follows the audio sent to the speakers", as
 });
 
 test("a cancelled queue cannot end a newer playback generation", async () => {
-  const { animationFrames, sources } = installPlaybackFakes();
+  const { animationFrames, flushMergeTimers, sources } = installPlaybackFakes();
   const states = [];
   const audio = usePcmAudio({
     onCaptureChunk() {},
@@ -234,8 +256,10 @@ test("a cancelled queue cannot end a newer playback generation", async () => {
   const pcm = new Int16Array([800, -800]).buffer;
 
   await audio.enqueuePlayback(pcm);
+  await flushMergeTimers();
   audio.clearPlayback();
   await audio.enqueuePlayback(pcm);
+  await flushMergeTimers();
   sources[0].finish();
 
   assert.equal(audio.playbackActive.value, true);
@@ -243,4 +267,16 @@ test("a cancelled queue cannot end a newer playback generation", async () => {
   sources[1].finish();
   assert.equal(audio.playbackActive.value, false);
   assert.deepEqual(states, [true, false, true, false]);
+});
+
+test("small PCM chunks merge into one BufferSource inside the jitter window", async () => {
+  const { flushMergeTimers, sources } = installPlaybackFakes();
+  const audio = usePcmAudio({ onCaptureChunk() {} });
+  const pcm = new Int16Array([100, -100]).buffer;
+
+  await audio.enqueuePlayback(pcm);
+  await audio.enqueuePlayback(pcm);
+  assert.equal(sources.length, 0);
+  await flushMergeTimers();
+  assert.equal(sources.length, 1);
 });

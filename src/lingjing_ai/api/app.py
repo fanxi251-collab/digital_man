@@ -5,7 +5,7 @@ import math
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -144,6 +144,7 @@ class MapConfigResponse(BaseModel):
     enabled: bool
     js_api_key: str
     security_js_code: str
+    map_style: str
     default_route_mode: str
     message: str
 
@@ -292,6 +293,11 @@ def create_app(
         name="digital_human_assets",
     )
 
+    @app.get("/", include_in_schema=False)
+    def site_entry() -> RedirectResponse:
+        # 根地址默认进入游客端，让部署域名本身就是可直接访问的产品入口。
+        return RedirectResponse(url="/visitor", status_code=307)
+
     @app.get("/pcm-capture-worklet.js", response_class=FileResponse)
     def visitor_pcm_capture_worklet() -> FileResponse:
         # Keep the old route because cached visitor builds may still request the pre-module Worklet URL.
@@ -319,6 +325,11 @@ def create_app(
     def admin_page_response(filename: str) -> FileResponse:
         # 管理页禁用 HTML 缓存，避免浏览器继续展示合并冲突前的旧导航结构。
         return FileResponse(frontend_dir / filename, headers={"Cache-Control": "no-store"})
+
+    @app.get("/admin", include_in_schema=False)
+    def admin_entry() -> RedirectResponse:
+        # 分析页是管理工作的总览，因此统一入口先落到该页面。
+        return RedirectResponse(url="/admin/analytics", status_code=307)
 
     @app.get("/admin/documents", response_class=FileResponse)
     def admin_documents_page() -> FileResponse:
@@ -414,6 +425,7 @@ def create_app(
             enabled=enabled,
             js_api_key=js_api_key,
             security_js_code=security_js_code,
+            map_style=pipeline.settings.map_js_style or "amap://styles/normal",
             default_route_mode=pipeline.settings.amap_route_default_mode,
             message=message,
         )

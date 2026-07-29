@@ -17,13 +17,14 @@ async function focusEnteredPage(element) {
 
 <template>
   <div class="visitor-route-stage">
-    <Transition name="lake-dissolve" @after-enter="focusEnteredPage">
+    <Transition
+      name="center-fade"
+      mode="out-in"
+      @after-enter="focusEnteredPage"
+    >
       <KeepAlive :max="5">
         <component :is="component" :key="routeKey" />
       </KeepAlive>
     </Transition>
   </div>
 </template>
-
-<style src="../route-transition.css"></style>
-

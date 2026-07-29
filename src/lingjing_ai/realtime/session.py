@@ -9,7 +9,14 @@ from typing import Any
 from fastapi import WebSocketDisconnect
 
 from lingjing_ai.config.settings import AppSettings
-from lingjing_ai.realtime.avatar_profiles import DEFAULT_AVATAR_ID, resolve_avatar_profile
+from lingjing_ai.realtime.avatar_profiles import (
+    DEFAULT_AVATAR_ID,
+    resolve_avatar_profile,
+)
+from lingjing_ai.realtime.connection_lifecycle import (
+    RealtimeClientFactory,
+    RealtimeConnectionLifecycle,
+)
 from lingjing_ai.realtime.conversation import PreparedRealtimeTurn, RealtimeConversationService
 from lingjing_ai.realtime.qwen_audio import QwenAudioRealtimeClient
 from lingjing_ai.services.question_expansion import VoiceQuestionUnderstanding
@@ -40,7 +47,7 @@ class PendingTranscript:
     understanding: VoiceQuestionUnderstanding
 
 
-class VisitorRealtimeSession:
+class VisitorRealtimeSession(RealtimeConnectionLifecycle):
     """Bridges browser events to one Qwen connection while committing only full turns."""
 
     def __init__(
@@ -51,6 +58,8 @@ class VisitorRealtimeSession:
         settings: AppSettings,
         conversation_service: RealtimeConversationService,
         qwen_client: QwenAudioRealtimeClient,
+        qwen_client_factory: RealtimeClientFactory | None = None,
+        avatar_id: str = DEFAULT_AVATAR_ID,
     ) -> None:
         self.browser = browser
         self.visitor_id = str(visitor_id or "").strip()
@@ -58,19 +67,26 @@ class VisitorRealtimeSession:
         self.settings = settings
         self.service = conversation_service
         self.qwen = qwen_client
+        self._qwen_client_factory = qwen_client_factory
         self.mode = "text"
-        self.avatar_id = DEFAULT_AVATAR_ID
+        self.avatar_id = avatar_id
         self.pending: PendingTurn | None = None
         self.pending_transcript: PendingTranscript | None = None
         self.audio_turn_id = ""
         self.audio_transcript_parts: list[str] = []
         self.upstream_available = False
+        # asyncio.Lock 保证 JSON/PCM 出站 FIFO，audio.started 严格先于首块 PCM。
         self._send_lock = asyncio.Lock()
         self._turn_transition_lock = asyncio.Lock()
         self._finalization_done = asyncio.Event()
         self._finalization_done.set()
-        self._reconnect_attempted = False
+        self._reconnect_failures = 0
         self._stale_response_ids: set[str] = set()
+        self._upstream_task: asyncio.Task[Any] | None = None
+        self._run_started = False
+        self._connection_generation = 0
+        self._avatar_switch_lock = asyncio.Lock()
+        self._avatar_switching = False
 
     async def open(self) -> None:
         history = await asyncio.to_thread(
@@ -79,8 +95,9 @@ class VisitorRealtimeSession:
             self.visitor_id,
         )
         try:
-            await self.qwen.open(history)
+            await self.qwen.open(history, self._session_config(self.avatar_id))
             self.upstream_available = True
+            self._connection_generation += 1
         except Exception as exc:
             self.upstream_available = False
             await self._send_error("UPSTREAM_CONNECT_FAILED", str(exc), recoverable=True)
@@ -89,6 +106,7 @@ class VisitorRealtimeSession:
                 "type": "session.ready",
                 "mode": self.mode,
                 "avatar_id": self.avatar_id,
+                "voice": self._profile(self.avatar_id).voice,
                 "upstream_available": self.upstream_available,
             }
         )
@@ -99,15 +117,14 @@ class VisitorRealtimeSession:
         await self.qwen.close()
 
     async def run(self) -> None:
-        upstream_task = None
+        self._run_started = True
         if self.upstream_available:
-            upstream_task = asyncio.create_task(self._upstream_loop())
+            self._start_upstream_task()
         try:
             await self._browser_loop()
         finally:
-            if upstream_task is not None:
-                upstream_task.cancel()
-                await asyncio.gather(upstream_task, return_exceptions=True)
+            self._run_started = False
+            await self._stop_upstream_task()
             await self.close()
 
     async def handle_client_event(self, event: dict[str, Any]) -> None:
@@ -126,16 +143,11 @@ class VisitorRealtimeSession:
             if resolve_avatar_profile(self.settings, requested_avatar_id) is None:
                 await self._send_error("INVALID_AVATAR", "不支持的数字人角色。")
                 return
-            if requested_avatar_id != self.avatar_id and (
-                self.pending or self.pending_transcript or self.audio_turn_id
-            ):
-                await self._cancel_current("")
-            self.avatar_id = requested_avatar_id
-            await self._send_json(
-                {"type": "avatar.changed", "avatar_id": self.avatar_id}
-            )
+            await self._switch_avatar(requested_avatar_id)
             return
         if event_type == "text.submit":
+            if await self._reject_during_avatar_switch():
+                return
             await self._start_question(
                 str(event.get("text", "")),
                 str(event.get("turn_id", "")),
@@ -143,6 +155,8 @@ class VisitorRealtimeSession:
             )
             return
         if event_type == "audio.start":
+            if await self._reject_during_avatar_switch():
+                return
             await self._start_audio(str(event.get("turn_id", "")))
             return
         if event_type == "audio.commit":
@@ -160,6 +174,8 @@ class VisitorRealtimeSession:
         await self._send_error("UNKNOWN_EVENT", f"不支持的客户端事件：{event_type}")
 
     async def handle_audio_frame(self, pcm: bytes) -> None:
+        if await self._reject_during_avatar_switch():
+            return
         if self.mode != "avatar" or not self.audio_turn_id:
             await self._send_error("AUDIO_NOT_STARTED", "请先在数字人模式开始录音。")
             return
@@ -210,6 +226,30 @@ class VisitorRealtimeSession:
             if self.pending is not None:
                 self.pending.response_id = response_id
                 self.pending.response_created.set()
+                actual_voice = str((event.get("response") or {}).get("voice") or "").strip()
+                expected_voice = self._profile(self.pending.avatar_id).voice
+                if self.pending.mode == "avatar":
+                    LOGGER.info(
+                        "realtime_response_voice turn_id=%s avatar_id=%s expected=%s actual=%s",
+                        self.pending.turn_id,
+                        self.pending.avatar_id,
+                        expected_voice,
+                        actual_voice or "unknown",
+                    )
+                if (
+                    self.pending.mode == "avatar"
+                    and actual_voice
+                    and actual_voice != expected_voice
+                ):
+                    await self.qwen.cancel_response()
+                    await self._send_error(
+                        "AVATAR_VOICE_MISMATCH",
+                        "数字人音色初始化不一致，本轮已停止语音并改用文字回答。",
+                        recoverable=True,
+                    )
+                    await self._fallback_current(
+                        "数字人音色初始化不一致，本轮已使用本地证据文本。"
+                    )
             elif response_id:
                 self._stale_response_ids.add(response_id)
             return
@@ -302,7 +342,7 @@ class VisitorRealtimeSession:
             pending.evidence_item_id = await self.qwen.inject_evidence(
                 pending.prepared.evidence_prompt
             )
-            await self.qwen.create_response(pending.mode, voice=self._voice_for_turn(pending))
+            await self.qwen.create_response(pending.mode)
         except Exception:
             # A failed upstream send still has complete Agent evidence, so preserve the turn via text fallback.
             await self._fallback_current("实时回答请求失败，已使用本地证据文本。")
@@ -321,8 +361,7 @@ class VisitorRealtimeSession:
             return
         if self.pending is not None:
             await self._cancel_current(self.pending.turn_id)
-        avatar_profile = resolve_avatar_profile(self.settings, self.avatar_id)
-        if avatar_profile is None:
+        if resolve_avatar_profile(self.settings, self.avatar_id) is None:
             await self._send_error("INVALID_AVATAR", "当前数字人角色不可用。")
             return
         try:
@@ -333,9 +372,8 @@ class VisitorRealtimeSession:
                 self.session_id,
                 expanded_questions=expanded_questions,
                 mode=self.mode,
-                avatar_style=(
-                    avatar_profile.style_instruction if self.mode == "avatar" else ""
-                ),
+                # Persona now lives in the first session.update so evidence remains factual and temporary.
+                avatar_style="",
             )
         except PermissionError as exc:
             await self._send_error("SESSION_FORBIDDEN", str(exc))
@@ -674,64 +712,6 @@ class VisitorRealtimeSession:
                 continue
             await self.handle_client_event(event)
 
-    async def _upstream_loop(self) -> None:
-        while True:
-            try:
-                event = await self.qwen.receive_event()
-                await self.handle_upstream_event(event)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                if await self._try_reconnect():
-                    continue
-                await self._send_error("UPSTREAM_DISCONNECTED", str(exc), recoverable=True)
-                self.upstream_available = False
-                await self._fallback_current("语音模型连接中断，已使用本地证据文本。")
-                return
-
-    async def _try_reconnect(self) -> bool:
-        if self._reconnect_attempted:
-            return False
-        self._reconnect_attempted = True
-        try:
-            await self.qwen.close()
-            history = await asyncio.to_thread(
-                self.service.upstream_history,
-                self.session_id,
-                self.visitor_id,
-            )
-            await self.qwen.open(history)
-            self.upstream_available = True
-            if self.pending:
-                await self._send_json(
-                    {"type": "turn.reset", "turn_id": self.pending.turn_id}
-                )
-                self.pending.answer_parts.clear()
-                self.pending.audio_started = False
-                self.pending.response_id = ""
-                self.pending.response_created = asyncio.Event()
-                self.pending.output_item_id = ""
-                self.pending.user_item_id = await self.qwen.inject_message(
-                    "user", self.pending.prepared.question
-                )
-                self.pending.evidence_item_id = await self.qwen.inject_evidence(
-                    self.pending.prepared.evidence_prompt
-                )
-                await self.qwen.create_response(
-                    self.pending.mode,
-                    voice=self._voice_for_turn(self.pending),
-                )
-            elif self.audio_turn_id:
-                turn_id = self.audio_turn_id
-                self.audio_turn_id = ""
-                self.audio_transcript_parts.clear()
-                await self._send_json(
-                    {"type": "turn.cancelled", "turn_id": turn_id, "reason": "audio_reconnect"}
-                )
-            return True
-        except Exception:
-            return False
-
     async def _delete_evidence(self, pending: PendingTurn) -> None:
         if not pending.evidence_item_id or not self.upstream_available:
             return
@@ -740,12 +720,6 @@ class VisitorRealtimeSession:
         except Exception:
             # Evidence is also discarded when the socket closes; cleanup must not hide a completed answer.
             return
-
-    def _voice_for_turn(self, pending: PendingTurn) -> str | None:
-        if pending.mode != "avatar":
-            return None
-        profile = resolve_avatar_profile(self.settings, pending.avatar_id)
-        return profile.voice if profile is not None else None
 
     async def _delete_turn_items(self, pending: PendingTurn) -> None:
         for item_id in (
@@ -777,6 +751,7 @@ class VisitorRealtimeSession:
             return
 
     async def _send_json(self, event: dict[str, Any]) -> None:
+        # 与 PCM 共用一把锁，形成有序单 writer，避免控制帧与音频帧交错。
         async with self._send_lock:
             await self.browser.send_json(event)
 

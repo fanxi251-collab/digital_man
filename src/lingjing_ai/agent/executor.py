@@ -1,4 +1,5 @@
 ﻿from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 from datetime import datetime, timezone
 import uuid
@@ -16,6 +17,19 @@ from lingjing_ai.services.tool_intent import (
     status_message_for_question,
 )
 
+# 可与 query_rewrite 解耦、彼此无依赖的检索类工具，适合并行。
+_PARALLEL_TOOL_NAMES = frozenset(
+    {
+        "rag_search",
+        "kg_search",
+        "document_search",
+        "web_search",
+        "amap_weather",
+        "amap_place",
+        "amap_route",
+    }
+)
+
 
 class AgentExecutor:
     def __init__(self, settings: AppSettings, tools: list[Any]) -> None:
@@ -29,6 +43,7 @@ class AgentExecutor:
         self,
         question: str,
         conversation_context: ConversationContext | None = None,
+        profile: str = "full",
     ) -> AgentEvidence:
         """Collect tool evidence without generating, so one final model serves text and voice modes."""
         active_question = self._active_question(question, conversation_context)
@@ -60,28 +75,8 @@ class AgentExecutor:
         if fast_evidence is not None:
             return fast_evidence
 
-        plan = self.planner.plan(active_question)
-        queries = [active_question]
-        traces: list[ToolTrace] = []
-        sources: list[SourceChunk] = []
-        for step in plan.steps:
-            tool = self.tools.get(step.tool_name)
-            if tool is None:
-                traces.append(ToolTrace(step.tool_name, step.tool_input, "skipped", "工具未注册"))
-                continue
-            result = self._run_tool(tool, step.tool_input, queries)
-            traces.append(
-                ToolTrace(
-                    tool_name=step.tool_name,
-                    tool_input=step.tool_input,
-                    status=result.status,
-                    message=result.message,
-                    source_count=len(result.sources),
-                )
-            )
-            if step.tool_name == "query_rewrite" and result.data.get("queries"):
-                queries = result.data["queries"][:3]
-            sources.extend(result.sources)
+        plan = self.planner.plan(active_question, profile=profile)
+        traces, sources = self._execute_plan_steps(plan.steps, active_question)
 
         ranked = self._compress_sources(self._prioritize_sources(active_question, self._dedupe_sources(sources)))
         return AgentEvidence(
@@ -92,6 +87,98 @@ class AgentExecutor:
             trace_id=f"evidence_{uuid.uuid4().hex}",
             tool_trace=traces,
         )
+
+    def _execute_plan_steps(
+        self,
+        steps: list[Any],
+        active_question: str,
+    ) -> tuple[list[ToolTrace], list[SourceChunk]]:
+        """先串行跑 query_rewrite，再并行跑其余独立工具，缩短证据收集墙钟时间。"""
+        queries = [active_question]
+        traces: list[ToolTrace] = []
+        sources: list[SourceChunk] = []
+        pending: list[Any] = []
+
+        for step in steps:
+            tool = self.tools.get(step.tool_name)
+            if tool is None:
+                traces.append(ToolTrace(step.tool_name, step.tool_input, "skipped", "工具未注册"))
+                continue
+            if step.tool_name == "query_rewrite":
+                result = self._run_tool(tool, step.tool_input, queries)
+                traces.append(
+                    ToolTrace(
+                        tool_name=step.tool_name,
+                        tool_input=step.tool_input,
+                        status=result.status,
+                        message=result.message,
+                        source_count=len(result.sources),
+                    )
+                )
+                if result.data.get("queries"):
+                    queries = result.data["queries"][:3]
+                sources.extend(result.sources)
+                continue
+            pending.append(step)
+
+        if not pending:
+            return traces, sources
+
+        parallel_steps = [step for step in pending if step.tool_name in _PARALLEL_TOOL_NAMES]
+        serial_steps = [step for step in pending if step.tool_name not in _PARALLEL_TOOL_NAMES]
+
+        # 保持计划顺序写入 tool_trace：并行结果按原步骤下标回填。
+        if len(parallel_steps) <= 1:
+            ordered_results = [
+                (step, self._run_tool(self.tools[step.tool_name], step.tool_input, queries))
+                for step in parallel_steps
+            ]
+        else:
+            ordered_results = [None] * len(parallel_steps)
+
+            def _run_indexed(index: int, step: Any) -> tuple[int, Any, ToolResult]:
+                tool = self.tools[step.tool_name]
+                return index, step, self._run_tool(tool, step.tool_input, queries)
+
+            workers = min(len(parallel_steps), 4)
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [
+                    pool.submit(_run_indexed, index, step)
+                    for index, step in enumerate(parallel_steps)
+                ]
+                for future in as_completed(futures):
+                    index, step, result = future.result()
+                    ordered_results[index] = (step, result)
+
+            ordered_results = [item for item in ordered_results if item is not None]
+
+        for step, result in ordered_results:
+            traces.append(
+                ToolTrace(
+                    tool_name=step.tool_name,
+                    tool_input=step.tool_input,
+                    status=result.status,
+                    message=result.message,
+                    source_count=len(result.sources),
+                )
+            )
+            sources.extend(result.sources)
+
+        for step in serial_steps:
+            tool = self.tools[step.tool_name]
+            result = self._run_tool(tool, step.tool_input, queries)
+            traces.append(
+                ToolTrace(
+                    tool_name=step.tool_name,
+                    tool_input=step.tool_input,
+                    status=result.status,
+                    message=result.message,
+                    source_count=len(result.sources),
+                )
+            )
+            sources.extend(result.sources)
+
+        return traces, sources
 
     def _collect_fast_tool_evidence(self, question: str) -> AgentEvidence | None:
         if not self.settings.agent_fast_tool_path_enabled:
@@ -154,29 +241,8 @@ class AgentExecutor:
             self._write_agent_log(active_question, fast_result)
             return fast_result
 
-        plan = self.planner.plan(active_question)
-        queries = [active_question]
-        traces: list[ToolTrace] = []
-        sources: list[SourceChunk] = []
-
-        for step in plan.steps:
-            tool = self.tools.get(step.tool_name)
-            if tool is None:
-                traces.append(ToolTrace(step.tool_name, step.tool_input, "skipped", "工具未注册"))
-                continue
-            result = self._run_tool(tool, step.tool_input, queries)
-            traces.append(
-                ToolTrace(
-                    tool_name=step.tool_name,
-                    tool_input=step.tool_input,
-                    status=result.status,
-                    message=result.message,
-                    source_count=len(result.sources),
-                )
-            )
-            if step.tool_name == "query_rewrite" and result.data.get("queries"):
-                queries = result.data["queries"][:3]
-            sources.extend(result.sources)
+        plan = self.planner.plan(active_question, profile="full")
+        traces, sources = self._execute_plan_steps(plan.steps, active_question)
 
         ranked_sources = self._compress_sources(self._prioritize_sources(active_question, self._dedupe_sources(sources)))
         answer = self._apply_assumptions(self._generate_answer(active_question, ranked_sources, conversation_context), conversation_context)

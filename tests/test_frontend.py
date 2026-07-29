@@ -44,6 +44,15 @@ def test_visitor_page_is_served_by_fastapi(tmp_path: Path):
     assert "Vue 游客端尚未构建" in response.text or "/assets/" in response.text
 
 
+def test_root_path_uses_visitor_as_the_default_entry(tmp_path: Path):
+    app = create_app(build_pipeline(tmp_path))
+
+    response = request_path(app, "/")
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/visitor"
+
+
 def test_current_visitor_brand_uses_lingjing_zhidao():
     sources = (
         Path("frontend/src/App.vue").read_text(encoding="utf-8"),
@@ -449,7 +458,7 @@ def test_visitor_root_uses_shared_left_sidebar_navigation():
     assert ".guide-view {\n  height: 100%;\n  min-height: 100%;\n}" in page_styles
 
 
-def test_visitor_shell_uses_lake_dissolve_transition_and_caches_five_views():
+def test_visitor_shell_uses_center_fade_transition_and_caches_five_views():
     app_source = Path("frontend/src/App.vue").read_text(encoding="utf-8")
     transition_source = Path(
         "frontend/src/components/VisitorRouteTransition.vue"
@@ -460,9 +469,12 @@ def test_visitor_shell_uses_lake_dissolve_transition_and_caches_five_views():
     assert "VisitorRouteTransition" in app_source
     assert "KeepAlive" in transition_source
     assert ':max="5"' in transition_source
-    assert 'name="lake-dissolve"' in transition_source
-    assert "lake-dissolve-enter-from" in page_styles
-    assert "filter: blur(7px)" in page_styles
+    assert 'name="center-fade"' in transition_source
+    assert "center-fade-enter-from" in page_styles
+    assert "will-change: opacity" in page_styles
+    assert "position: absolute;\n  inset: 0" not in page_styles
+    assert "translateY" not in page_styles
+    assert "filter: blur" not in page_styles
     assert "prefers-reduced-motion: reduce" in page_styles
 
 
@@ -490,13 +502,14 @@ def test_food_and_feedback_views_have_complete_visitor_flows():
 def test_map_view_supports_food_layer_and_cross_type_routes():
     map_source = Path("frontend/src/views/MapView.vue").read_text(encoding="utf-8")
     map_composable = Path("frontend/src/composables/useInteractiveMap.js").read_text(encoding="utf-8")
+    map_styles = Path("frontend/src/map-places.css").read_text(encoding="utf-8")
 
-    assert 'fetch("/api/visitor/foods")' in map_source
+    assert "fetchVisitorFoods" in map_source
     assert "normalizeFoodPlace" in map_source
     assert "route.query.food" in map_source
     assert "景点" in map_source and "美食" in map_source
-    assert "place.kind === \"food\"" in map_composable
-    assert 'color: "#d4a64c"' in map_composable
+    assert 'place.kind === "food"' in map_composable or "is-food" in map_composable
+    assert "background: #b7791f" in map_styles
     assert "resize" in map_composable
 
 

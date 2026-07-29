@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import FoodDetailDrawer from "../components/FoodDetailDrawer.vue";
 import { filterFoods } from "../features/food/lib/foodFilters";
+import { fetchVisitorFoods } from "../lib/visitorCatalog.js";
 
 const foods = ref([]);
 const selected = ref(null);
@@ -28,10 +29,8 @@ const featured = computed(() => foods.value.filter((food) => food.is_featured).s
 async function loadFoods() {
   loadingState.value = "正在准备灵山风味...";
   try {
-    const response = await fetch("/api/visitor/foods");
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
-    foods.value = data.foods || [];
+    const data = await fetchVisitorFoods();
+    foods.value = data.foods;
     loadingState.value = foods.value.length ? "" : "暂无已发布的美食推荐。";
   } catch (error) {
     loadingState.value = `美食加载失败：${error.message}`;

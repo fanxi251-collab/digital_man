@@ -7,7 +7,13 @@ from typing import Iterator, Any
 
 from lingjing_ai.config.settings import AppSettings
 from lingjing_ai.models.rag import Document, DocumentRecord, RagAnswer, SourceChunk
-from lingjing_ai.rag.cache import QuestionCache, RedisBackedQuestionCache, answer_cache_key
+from lingjing_ai.rag.cache import (
+    QuestionCache,
+    RedisBackedQuestionCache,
+    SourceSearchCache,
+    answer_cache_key,
+    evidence_search_cache_key,
+)
 from lingjing_ai.rag.chunker import TextChunker
 from lingjing_ai.rag.embeddings import HashingEmbeddingProvider
 from lingjing_ai.rag.generator import ExtractiveAnswerGenerator
@@ -57,6 +63,11 @@ class RagPipeline:
             memory_cache=memory_answer_cache,
             redis_cache=self.redis_cache,
             ttl_seconds=settings.redis_answer_cache_ttl_seconds,
+        )
+        # 检索层短缓存：资料更新时随 invalidate_answer_cache 一并清空。
+        self.evidence_search_cache = SourceSearchCache(
+            max_items=settings.evidence_search_cache_max_items,
+            ttl_seconds=settings.evidence_search_cache_ttl_seconds,
         )
         self.document_manifest = DocumentManifestStore(
             manifest_path=settings.data_dir / "document_manifest.json",
@@ -320,12 +331,26 @@ class RagPipeline:
     def invalidate_answer_cache(self) -> None:
         self.knowledge_version = uuid.uuid4().hex
         self.answer_cache.clear()
+        self.evidence_search_cache.clear()
 
     def search_sources(self, question: str) -> list[SourceChunk]:
+        cache_key = evidence_search_cache_key(
+            question=question,
+            knowledge_version=self.knowledge_version,
+            retrieval_mode=self.settings.retrieval_mode,
+            top_k=self.settings.top_k,
+        )
+        if self.settings.evidence_search_cache_enabled:
+            cached = self.evidence_search_cache.get(cache_key)
+            if cached is not None:
+                return cached
         sources = self._retrieve_sources(question) + self._retrieve_graph_sources(question)
         sources = self._dedupe_sources(sources)
         sources.sort(key=lambda source: source.score, reverse=True)
-        return self._compress_sources(sources)
+        compressed = self._compress_sources(sources)
+        if self.settings.evidence_search_cache_enabled:
+            self.evidence_search_cache.set(cache_key, compressed)
+        return compressed
 
     def _retrieve_sources(self, question: str) -> list[SourceChunk]:
         matches = self.retriever.retrieve(

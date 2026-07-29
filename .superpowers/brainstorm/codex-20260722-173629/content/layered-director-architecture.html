@@ -1,0 +1,71 @@
+<style>
+  .arch-wrap { max-width: 1040px; margin: 0 auto; }
+  .arch-grid { display:grid; grid-template-columns:1fr 1.25fr 1fr; gap:14px; align-items:stretch; margin:24px 0; }
+  .arch-col { display:flex; flex-direction:column; gap:12px; }
+  .arch-card { position:relative; padding:16px; border-radius:16px; border:1px solid rgba(46,139,126,.24); background:rgba(248,252,250,.92); box-shadow:0 12px 28px rgba(21,66,62,.08); }
+  .arch-card.primary { color:#effcf7; border-color:rgba(224,183,96,.65); background:linear-gradient(145deg,#0c6159,#08423f); }
+  .arch-card.scene { background:linear-gradient(155deg,#edf8f4,#dcefe9); }
+  .arch-card h3 { margin:0 0 7px; font-size:16px; }
+  .arch-card p { margin:0; font-size:12px; line-height:1.55; opacity:.78; }
+  .arch-card ul { margin:10px 0 0; padding-left:17px; font-size:11px; line-height:1.65; }
+  .tag { display:inline-block; margin-bottom:8px; padding:4px 8px; border-radius:999px; font-size:9px; font-weight:800; letter-spacing:.1em; color:#17534d; background:#d8eee7; }
+  .primary .tag { color:#173d38; background:#e7bd63; }
+  .flow { display:flex; align-items:center; justify-content:center; gap:8px; margin:2px 0; color:#2f766d; font-size:11px; font-weight:700; }
+  .flow::before,.flow::after { content:''; height:1px; flex:1; background:linear-gradient(90deg,transparent,#70a89f); }
+  .state-row { display:flex; flex-wrap:wrap; gap:7px; margin-top:12px; }
+  .state-row span { padding:5px 8px; border-radius:999px; color:#dff8f0; font-size:10px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.12); }
+  .state-row span.active { color:#173d38; background:#e7bd63; }
+  .shared-data { margin-top:14px; padding:14px 16px; border-radius:15px; border:1px dashed rgba(47,118,109,.4); background:rgba(216,238,231,.35); }
+  .shared-data strong { color:#17534d; }
+  .approval { margin-top:22px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .approval .option { margin:0; }
+  @media(max-width:900px){.arch-grid{grid-template-columns:1fr}.approval{grid-template-columns:1fr}}
+</style>
+
+<div class="arch-wrap">
+  <div class="label">DESIGN SECTION 01 · ARCHITECTURE</div>
+  <h2>分层导演架构</h2>
+  <p class="subtitle">核心原则：同一份巡游脚本同时驱动在线高德场景和本地降级场景；界面组件只表达状态，不直接操纵地图。</p>
+
+  <div class="arch-grid">
+    <div class="arch-col">
+      <div class="arch-card">
+        <span class="tag">页面外壳</span><h3>MapView</h3><p>负责装配组件、加载地点，并保留现有路线与详情能力。</p>
+      </div>
+      <div class="arch-card">
+        <span class="tag">交互表达</span><h3>舞台组件</h3>
+        <ul><li>LingjingOrb 灵境光球</li><li>TourTimeline 巡游时间轴</li><li>ScenicStoryCard 景点讲解卡</li><li>PersonaRouteSwitcher 画像路线切换</li></ul>
+      </div>
+    </div>
+
+    <div class="arch-col">
+      <div class="arch-card primary">
+        <span class="tag">唯一调度中心</span><h3>useTourDirector</h3>
+        <p>读取本地巡游脚本，统一发出镜头、路线、光球、讲解和语音指令；暂停、跳过、接管只改变导演状态。</p>
+        <div class="state-row"><span>待机</span><span class="active">巡游</span><span>暂停</span><span>自由探索</span><span>本地降级</span></div>
+      </div>
+      <div class="flow">统一场景指令</div>
+      <div class="arch-card scene">
+        <span class="tag">场景适配层</span><h3>Scene Adapter</h3><p>导演不知道底层是高德还是本地画面，因此两种场景可以无缝切换。</p>
+        <ul><li>useAmapScene：3D 镜头、流光路线、标记事件</li><li>OfflineScenicStage：本地背景、SVG 路线、预制镜头</li></ul>
+      </div>
+    </div>
+
+    <div class="arch-col">
+      <div class="arch-card">
+        <span class="tag">现有服务</span><h3>数据与 AI</h3>
+        <ul><li>景点与美食 API</li><li>高德路线规划 API</li><li>AI 问答与个性化推荐</li><li>现有语音与数字人能力</li></ul>
+      </div>
+      <div class="arch-card">
+        <span class="tag">演示稳定性</span><h3>本地预编排资源</h3><p>经典路线、讲解文字、时间轴与离线场景全部随前端构建发布，默认巡游零等待。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="shared-data"><strong>共享数据契约：</strong>巡游站点只描述坐标、时长、镜头、讲解和资源；在线/离线场景各自解释同一条指令，避免维护两套故事流程。</div>
+
+  <div class="approval options">
+    <div class="option" data-choice="architecture-approved" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>架构符合预期</h3><p>继续设计 60–90 秒巡游时间线。</p></div></div>
+    <div class="option" data-choice="architecture-revise" onclick="toggleSelect(this)"><div class="letter">↺</div><div class="content"><h3>需要调整</h3><p>请在终端说明希望改变的模块或边界。</p></div></div>
+  </div>
+</div>
