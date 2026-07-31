@@ -3,6 +3,15 @@ export function formatConfidence(value) {
   return Number.isNaN(number) ? "--" : `${Math.round(number * 100)}%`;
 }
 
+export function latestUserText(messages) {
+  return [...(messages || [])]
+    .reverse()
+    .find((message) => (
+      message?.role === "user"
+      && String(message.content || "").trim()
+    ))?.content?.trim() || "";
+}
+
 export function ensureAssistantMessage(messages, turnId, retryQuestion = "") {
   let message = messages.find((item) => item.id === turnId && item.role === "assistant");
   if (!message) {

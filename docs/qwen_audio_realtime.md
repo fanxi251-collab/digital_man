@@ -12,7 +12,6 @@ LJ_REALTIME_URL: 可选的完整 WebSocket 地址
 LJ_REALTIME_VOICE: longanqian
 LJ_REALTIME_VOICE_MAO_PRO: longanqian
 LJ_REALTIME_VOICE_CHITOSE: longanlufeng
-LJ_REALTIME_VOICE_HARUTO: longanxiaoxin
 LJ_REALTIME_HISTORY_TURNS: 6
 LJ_REALTIME_CONNECT_TIMEOUT_SECONDS: 15
 LJ_ASR_CORRECTION_ENABLED: true
@@ -27,7 +26,7 @@ LJ_ASR_GLOSSARY_TTL_SECONDS: 60
 - 浏览器发送 JSON 控制事件，以及 16kHz、16bit、单声道 PCM 二进制帧。
 - 常规模式每次响应显式使用 `modalities: ["text"]`。
 - 数字人模式每次响应显式使用 `modalities: ["audio", "text"]`。
-- 数字人模式通过服务端角色白名单逐轮覆盖音色；常规模式不携带`voice`字段。
+- 数字人角色的音色在上游连接第一次`session.update`中由服务端白名单设置；常规模式的每轮`response.create`仍不携带`voice`字段。
 - 服务端向浏览器返回 JSON 状态/字幕事件和 24kHz PCM 二进制帧。
 - Agent/RAG 先收集证据，证据作为临时系统消息注入 Qwen；完整回答后立即删除。
 - 只有完整回答或本地证据降级文本会写入 PostgreSQL；取消、失败和空白转写不保存半截内容。
@@ -43,9 +42,8 @@ LJ_ASR_GLOSSARY_TTL_SECONDS: 60
 
 ## Live2D角色
 
-- `mao_pro`：默认女导游，使用`longanqian`，表达亲切自然。
+- `mao_pro`：兼容角色ID，当前显示Haru Greeter女导游，使用`longanqian`，表达亲切自然；原Mao Pro资源保留但运行时不加载。
 - `chitose`：男导游，使用`longanlufeng`，表达沉稳清晰。
-- `haruto`：儿童导游，使用`longanxiaoxin`，使用活泼易懂的短句，但不得省略路线事实和限制条件。
 
 角色选择保存在浏览器`lingjing_digital_human_avatar`，不写入 PostgreSQL。浏览器只发送角色ID，音色和表达提示由后端白名单决定。收到`avatar.changed`前，数字人输入会保持禁用；切换角色会取消当前录音、生成和播放，但不会调用模型或清空历史。
 

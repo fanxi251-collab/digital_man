@@ -215,7 +215,7 @@ def test_digital_human_frontend_isolated_behind_feature_entrypoint():
         assert exported_name in feature_entrypoint
 
 
-def test_digital_human_live2d_renderer_replaces_svg_with_stable_contract():
+def test_digital_human_stage_uses_live2d_renderer_with_stable_contract():
     feature_root = Path("frontend/src/features/digital-human")
     renderer_path = feature_root / "renderers/Live2DAvatarRenderer.vue"
     svg_path = feature_root / "renderers/SvgAvatarRenderer.vue"
@@ -243,6 +243,7 @@ def test_digital_human_live2d_renderer_replaces_svg_with_stable_contract():
         encoding="utf-8"
     )
     assert "Live2DAvatarRenderer" in stage_source
+    assert "ThreeDAvatarRenderer" not in stage_source
     assert "SvgAvatarRenderer" not in stage_source
     assert "emotionText" in stage_source
     assert "数字人形象加载失败" in stage_source
@@ -337,7 +338,7 @@ def test_digital_human_stage_uses_left_visual_and_latest_answer_panel():
     assert "灵山胜境适合老人怎么玩" not in chat_source
 
 
-def test_live2d_dependencies_and_local_mao_pro_assets_are_complete():
+def test_live2d_dependencies_and_local_mao_assets_are_complete():
     package = Path("frontend/package.json").read_text(encoding="utf-8")
     live2d_root = Path("frontend/public/digital-human/live2d")
     model_root = live2d_root / "mao_pro"
@@ -345,6 +346,7 @@ def test_live2d_dependencies_and_local_mao_pro_assets_are_complete():
 
     assert '"pixi.js": "6.5.10"' in package
     assert '"pixi-live2d-display": "0.4.0"' in package
+    assert '"three":' not in package
     assert (live2d_root / "live2dcubismcore.min.js").is_file()
     assert (live2d_root / "NOTICE.md").is_file()
     assert (live2d_root / "LICENSE-Live2D-Cubism-SDK.txt").is_file()
@@ -367,7 +369,34 @@ def test_live2d_dependencies_and_local_mao_pro_assets_are_complete():
         assert (model_root / expected_asset).is_file(), expected_asset
 
 
-def test_local_chitose_and_haruto_runtime_assets_are_complete():
+def test_local_haru_greeter_runtime_is_complete_and_keeps_mao_for_rollback():
+    live2d_root = Path("frontend/public/digital-human/live2d")
+    model_root = live2d_root / "haru_greeter"
+    model_json = model_root / "haru_greeter_t05.model3.json"
+
+    assert model_json.is_file()
+    assert (model_root / "README.md").is_file()
+    assert (live2d_root / "mao_pro" / "mao_pro.model3.json").is_file()
+
+    model_source = model_json.read_text(encoding="utf-8")
+    model = json.loads(model_source)
+    assert "http://" not in model_source
+    assert "https://" not in model_source
+    assert set(model["FileReferences"]["Motions"]) == {""}
+    assert len(model["FileReferences"]["Motions"][""]) == 27
+    assert model["FileReferences"]["Motions"][""][0]["File"] == (
+        "motion/haru_g_idle.motion3.json"
+    )
+    groups = {group["Name"]: group["Ids"] for group in model["Groups"]}
+    assert groups["EyeBlink"] == ["ParamEyeLOpen", "ParamEyeROpen"]
+    assert groups["LipSync"] == ["ParamMouthOpenY"]
+
+    referenced_paths = _collect_live2d_runtime_paths(model["FileReferences"])
+    for referenced_path in referenced_paths:
+        assert (model_root / referenced_path).is_file(), referenced_path
+
+
+def test_local_chitose_runtime_assets_are_complete_and_haruto_is_removed():
     live2d_root = Path("frontend/public/digital-human/live2d")
     expected = {
         "chitose": (
@@ -380,13 +409,6 @@ def test_local_chitose_and_haruto_runtime_assets_are_complete():
             "expressions/Smile.exp3.json",
             "expressions/Sad.exp3.json",
             "expressions/Surprised.exp3.json",
-        ),
-        "haruto": (
-            "haruto.model3.json",
-            "haruto.moc3",
-            "haruto.2048/texture_00.png",
-            "haruto.physics3.json",
-            "motion/idle.motion3.json",
         ),
     }
 
@@ -403,10 +425,9 @@ def test_local_chitose_and_haruto_runtime_assets_are_complete():
         for referenced_path in referenced_paths:
             assert (model_root / referenced_path).is_file(), f"{avatar_id}: {referenced_path}"
 
-        if avatar_id == "haruto":
-            groups = {group["Name"]: group["Ids"] for group in model["Groups"]}
-            assert groups["LipSync"] == ["PARAM_MOUTH_OPEN_Y"]
-            assert groups["EyeBlink"] == ["PARAM_EYE_L_OPEN", "PARAM_EYE_R_OPEN"]
+    assert not any(
+        path.is_file() for path in (live2d_root / "haruto").rglob("*")
+    )
 
 
 def _collect_live2d_runtime_paths(value) -> list[str]:
@@ -691,9 +712,9 @@ def test_fastapi_serves_local_live2d_assets(tmp_path: Path):
     app = create_app(build_pipeline(tmp_path))
 
     models = {
+        "haru_greeter": ("haru_greeter_t05.model3.json", "haru_greeter_t05.moc3"),
         "mao_pro": ("mao_pro.model3.json", "mao_pro.moc3"),
         "chitose": ("chitose.model3.json", "chitose.moc3"),
-        "haruto": ("haruto.model3.json", "haruto.moc3"),
     }
     responses = {
         avatar_id: (
@@ -706,11 +727,15 @@ def test_fastapi_serves_local_live2d_assets(tmp_path: Path):
         app, "/digital-human/live2d/mao_pro/mao_pro.4096/texture_00.png"
     )
     core = request_path(app, "/digital-human/live2d/live2dcubismcore.min.js")
+    removed_child = request_path(
+        app, "/digital-human/live2d/haruto/haruto.model3.json"
+    )
 
     assert all(model.status_code == 200 for model, _ in responses.values())
     assert all(moc.status_code == 200 for _, moc in responses.values())
     assert texture.status_code == 200
     assert core.status_code == 200
+    assert removed_child.status_code == 404
     assert all(model.json()["Version"] == 3 for model, _ in responses.values())
 
 
@@ -729,6 +754,20 @@ def test_avatar_mode_blocks_submission_until_server_acknowledges_role():
     ).read_text(encoding="utf-8")
     assert 'avatarReady: { type: Boolean' in chat_main
     assert ':disabled="mode === \'avatar\' && !avatarReady"' in chat_main
+
+
+def test_avatar_tour_uses_uncompressed_mobile_flow():
+    chat_main = Path("frontend/src/components/ChatMain.vue").read_text(encoding="utf-8")
+    guide_styles = Path("frontend/src/guide.css").read_text(encoding="utf-8")
+    stage = Path(
+        "frontend/src/features/digital-human/components/DigitalHumanStage.vue"
+    ).read_text(encoding="utf-8")
+
+    assert "'is-avatar-mode': mode === 'avatar'" in chat_main
+    assert ".guide-view .chat-main.is-avatar-mode" in guide_styles
+    assert "overflow-y: auto" in guide_styles
+    assert "height: auto" in stage
+    assert "min-height: 702px" in stage
 
 
 def test_legacy_admin_assets_are_still_served(tmp_path: Path):

@@ -21,9 +21,25 @@ const props = defineProps({
   autoGainState: { type: String, default: "unknown" },
   answerText: { type: String, default: "" },
   emotionText: { type: String, default: "" },
+  latestUserText: { type: String, default: "" },
+  hasRouteSource: { type: Boolean, default: false },
   microphoneState: { type: String, default: "idle" },
   transcriptConfirmation: { type: Object, default: null },
   correctionNotice: { type: String, default: "" },
+  contentKind: { type: String, default: "assistant" },
+  answerTitle: { type: String, default: "" },
+  tourStatus: { type: String, default: "loading" },
+  tourRoute: { type: Object, default: null },
+  tourPreviewRoute: { type: Object, default: null },
+  tourStops: { type: Array, default: () => [] },
+  tourPosition: { type: Object, default: null },
+  tourActiveStop: { type: Object, default: null },
+  tourDwellProgress: { type: Number, default: 0 },
+  tourSpeed: { type: Number, default: 1 },
+  locationMode: { type: String, default: "simulation" },
+  gpsStatus: { type: String, default: "idle" },
+  tourLoadError: { type: String, default: "" },
+  requiresManualPlay: { type: Boolean, default: false },
 });
 const mode = defineModel("mode", { type: String, default: "text" });
 const emit = defineEmits([
@@ -35,6 +51,14 @@ const emit = defineEmits([
   "confirm-transcript",
   "avatar-change",
   "toggle-history",
+  "tour-start",
+  "tour-pause",
+  "tour-resume",
+  "tour-speed-change",
+  "tour-reset",
+  "location-mode-change",
+  "accept-preview-route",
+  "play-narration",
 ]);
 const question = ref("");
 
@@ -52,7 +76,10 @@ function submitQuestion() {
 </script>
 
 <template>
-  <section class="chat-main" aria-label="景区 AI 导游问答">
+  <section
+    :class="['chat-main', { 'is-avatar-mode': mode === 'avatar' }]"
+    aria-label="景区 AI 导游问答"
+  >
     <header class="chat-topbar">
       <div class="chat-heading">
         <p class="brand-mark">灵境智导</p>
@@ -93,6 +120,30 @@ function submitQuestion() {
       :audio-level="audioLevel"
       :answer-text="answerText"
       :emotion-text="emotionText"
+      :user-text="latestUserText"
+      :has-route-source="hasRouteSource"
+      :content-kind="contentKind"
+      :answer-title="answerTitle"
+      :tour-status="tourStatus"
+      :tour-route="tourRoute"
+      :tour-preview-route="tourPreviewRoute"
+      :tour-stops="tourStops"
+      :tour-position="tourPosition"
+      :tour-active-stop="tourActiveStop"
+      :tour-dwell-progress="tourDwellProgress"
+      :tour-speed="tourSpeed"
+      :location-mode="locationMode"
+      :gps-status="gpsStatus"
+      :tour-load-error="tourLoadError"
+      :requires-manual-play="requiresManualPlay"
+      @tour-start="emit('tour-start')"
+      @tour-pause="emit('tour-pause')"
+      @tour-resume="emit('tour-resume')"
+      @tour-speed-change="emit('tour-speed-change', $event)"
+      @tour-reset="emit('tour-reset')"
+      @location-mode-change="emit('location-mode-change', $event)"
+      @accept-preview-route="emit('accept-preview-route')"
+      @play-narration="emit('play-narration')"
     />
 
     <TranscriptConfirmation

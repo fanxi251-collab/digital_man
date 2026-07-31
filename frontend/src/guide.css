@@ -506,6 +506,13 @@
   .guide-view .chat-main {
     padding-inline: 18px;
   }
+
+  .guide-view .chat-main.is-avatar-mode {
+    /* 数字人地图需要稳定的纵向空间，因此在窄屏改用内容流，避免剩余高度网格压扁回答面板。 */
+    grid-template-rows: auto auto auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
 }
 
 @media (max-width: 820px) {

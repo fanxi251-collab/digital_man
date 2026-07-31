@@ -4,7 +4,10 @@ import { loadLive2DLibrary } from "../lib/live2dLoader.js";
 import { resolveAvatarProfile } from "../lib/live2dCharacters.js";
 import {
   applyLipSyncValue,
+  createExclusiveMotionController,
+  createFirstFrameReveal,
   createMissingLipSyncWarning,
+  initializeProfileIdleState,
   live2DMouthTarget,
   smoothLipSyncValue,
 } from "../lib/live2dMotion.js";
@@ -14,6 +17,7 @@ const props = defineProps({
   state: { type: String, default: "idle" },
   audioLevel: { type: Number, default: 0 },
   expression: { type: String, default: null },
+  motionIntent: { type: String, default: "idle" },
 });
 const emit = defineEmits(["ready", "error"]);
 const avatarProfile = computed(() => resolveAvatarProfile(props.avatarId));
@@ -26,6 +30,8 @@ let currentMouthValue = 0;
 let lifecycleToken = 0;
 let lipSyncHandler = null;
 let tickerHandler = null;
+let firstFrameReveal = null;
+let motionController = null;
 const warnIfMissingLipSync = createMissingLipSyncWarning();
 
 function fitModel() {
@@ -52,8 +58,21 @@ async function applyExpression(expression) {
   }
 }
 
+function fallbackMotionIntent() {
+  return props.state === "speaking" ? "explanation" : "idle";
+}
+
+async function applySemanticMotion(intent) {
+  if (!motionController) return;
+  await motionController.setIntent(intent, fallbackMotionIntent());
+}
+
 function destroyRenderer() {
   lifecycleToken += 1;
+  motionController?.dispose();
+  motionController = null;
+  firstFrameReveal?.cancel();
+  firstFrameReveal = null;
   resizeObserver?.disconnect();
   resizeObserver = null;
 
@@ -100,6 +119,10 @@ async function initializeRenderer() {
     model = loadedModel;
     warnIfMissingLipSync(model.internalModel);
     model.anchor.set(0.5, 0.5);
+    const revealGate = avatarProfile.value.idleMotion
+      ? createFirstFrameReveal(model.internalModel, application.view)
+      : null;
+    firstFrameReveal = revealGate;
     application.stage.addChild(model);
 
     tickerHandler = () => {
@@ -117,7 +140,22 @@ async function initializeRenderer() {
     resizeObserver = new ResizeObserver(fitModel);
     resizeObserver.observe(host.value);
     fitModel();
+    await initializeProfileIdleState(model, avatarProfile.value);
+    if (revealGate) {
+      revealGate.markMotionReady();
+      const revealed = await revealGate.revealed;
+      if (!revealed || token !== lifecycleToken || !model) return;
+      if (firstFrameReveal === revealGate) firstFrameReveal = null;
+    }
     await applyExpression(props.expression);
+    if (avatarProfile.value.semanticMotions) {
+      motionController = createExclusiveMotionController(model, avatarProfile.value);
+      if (props.state === "idle") {
+        await motionController.playEntryMotion();
+      } else {
+        await applySemanticMotion(props.motionIntent);
+      }
+    }
     emit("ready");
   } catch (error) {
     destroyRenderer();
@@ -126,6 +164,7 @@ async function initializeRenderer() {
 }
 
 watch(() => props.expression, (expression) => applyExpression(expression));
+watch(() => props.motionIntent, (intent) => applySemanticMotion(intent));
 watch(() => props.avatarId, initializeRenderer);
 watch(() => props.state, (state) => {
   if (state !== "speaking") currentMouthValue = 0;

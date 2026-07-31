@@ -13,6 +13,8 @@ from lingjing_ai.api.analytics_routes import build_analytics_router
 from lingjing_ai.api.attraction_routes import build_attraction_router
 from lingjing_ai.api.feedback_routes import build_feedback_router
 from lingjing_ai.api.food_routes import build_food_router
+from lingjing_ai.api.guided_tour_routes import build_guided_tour_router
+from lingjing_ai.api.guided_tour_speech_routes import build_guided_tour_speech_router
 from lingjing_ai.api.realtime_routes import build_realtime_router
 from lingjing_ai.agent.executor import AgentExecutor
 from lingjing_ai.agent.langgraph_executor import LangGraphAgentExecutor
@@ -23,6 +25,8 @@ from lingjing_ai.rag.pipeline import RagPipeline
 from lingjing_ai.realtime.conversation import RealtimeConversationService
 from lingjing_ai.realtime.glossary import GlossaryProvider
 from lingjing_ai.realtime.transcript import TranscriptNormalizer
+from lingjing_ai.guided_tour.catalog import GuidedTourCatalog
+from lingjing_ai.guided_tour.speech import GuidedTourSpeechService
 from lingjing_ai.services.conversation import ConversationMessage, build_conversation_context
 from lingjing_ai.services.conversation_store import (
     ConversationSessionRecord,
@@ -209,7 +213,7 @@ def create_app(
     visitor_dist_dir = frontend_dir / "dist"
     visitor_assets_dir = visitor_dist_dir / "assets"
     visitor_digital_human_dir = visitor_dist_dir / "digital-human"
-    required_avatar_dirs = ("mao_pro", "chitose", "haruto")
+    required_avatar_dirs = ("haru_greeter", "mao_pro", "chitose")
     if not all(
         (visitor_digital_human_dir / "live2d" / avatar_id).is_dir()
         for avatar_id in required_avatar_dirs
@@ -236,6 +240,12 @@ def create_app(
         schema=f"{schema_prefix}foods",
     )
     feedback_store = FeedbackStore(database_url, schema=f"{schema_prefix}feedback")
+    guided_tour_catalog = GuidedTourCatalog(_project_root() / "config" / "guided_tour.json")
+    guided_tour_speech = GuidedTourSpeechService(
+        enabled=pipeline.settings.guided_tour_tts_enabled,
+        subscription_key=pipeline.settings.azure_speech_key,
+        region=pipeline.settings.azure_speech_region,
+    )
     route_scope = _build_scenic_navigation_scope(pipeline, attraction_store)
     agent_executor = _build_agent_executor(pipeline, attraction_store, route_scope)
     question_expander = _build_question_expander(pipeline)
@@ -267,6 +277,14 @@ def create_app(
     app.include_router(build_attraction_router(attraction_store))
     app.include_router(build_food_router(food_store))
     app.include_router(build_feedback_router(feedback_store))
+    app.include_router(build_guided_tour_router(guided_tour_catalog))
+    app.include_router(
+        build_guided_tour_speech_router(
+            guided_tour_catalog,
+            attraction_store,
+            guided_tour_speech,
+        )
+    )
     analytics_store = AnalyticsSnapshotStore(
         pipeline.settings.data_dir / "tourism_analytics_snapshot.json"
     )

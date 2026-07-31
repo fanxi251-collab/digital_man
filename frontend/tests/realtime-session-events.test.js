@@ -7,6 +7,7 @@ import {
   ensureAssistantMessage,
   ensureVoiceMessages,
   formatConfidence,
+  latestUserText,
 } from "../src/lib/realtimeTurnHelpers.js";
 
 function createRef(value) {
@@ -60,6 +61,17 @@ test("ensureAssistantMessage creates or reuses the assistant turn row", () => {
   assert.equal(messages.length, 1);
   assert.equal(created.retryQuestion, "问路");
   assert.equal(ensureAssistantMessage(messages, "turn_1"), created);
+});
+
+test("latestUserText returns the newest non-empty visitor message", () => {
+  assert.equal(latestUserText([
+    { role: "user", content: "第一问" },
+    { role: "assistant", content: "第一答" },
+    { role: "user", content: "  " },
+    { role: "user", content: "你讲得真专业" },
+    { role: "assistant", content: "谢谢" },
+  ]), "你讲得真专业");
+  assert.equal(latestUserText([{ role: "assistant", content: "没有游客消息" }]), "");
 });
 
 test("ensureVoiceMessages adds a voice user row once", () => {

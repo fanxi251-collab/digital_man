@@ -187,7 +187,7 @@ def test_text_mode_requests_text_only_and_persists_complete_answer(tmp_path: Pat
     assert browser.json_events[-1]["type"] == "turn.completed"
 
 
-def test_initial_avatar_configures_the_first_upstream_session(tmp_path: Path):
+def test_initial_male_avatar_configures_the_first_upstream_session(tmp_path: Path):
     async def scenario():
         browser = FakeBrowser()
         qwen = FakeQwen()
@@ -198,18 +198,18 @@ def test_initial_avatar_configures_the_first_upstream_session(tmp_path: Path):
             AppSettings.for_workspace(tmp_path),
             FakeConversationService(),
             qwen,
-            avatar_id="haruto",
+            avatar_id="chitose",
         )
         await session.open()
         return browser, qwen
 
     browser, qwen = asyncio.run(scenario())
 
-    assert qwen.session_configs[0].voice == "longanxiaoxin"
-    assert "Haruto儿童导游" in qwen.session_configs[0].instructions
+    assert qwen.session_configs[0].voice == "longanlufeng"
+    assert "Chitose男导游" in qwen.session_configs[0].instructions
     ready = next(event for event in browser.json_events if event["type"] == "session.ready")
-    assert ready["avatar_id"] == "haruto"
-    assert ready["voice"] == "longanxiaoxin"
+    assert ready["avatar_id"] == "chitose"
+    assert ready["voice"] == "longanlufeng"
 
 
 def test_text_mode_replaces_streamed_markdown_with_clean_final_and_history_text(tmp_path: Path):
@@ -369,7 +369,7 @@ def test_avatar_selection_is_whitelisted_and_controls_voice_and_style(tmp_path: 
             qwen_client_factory=lambda: male_qwen,
         )
         await session.open()
-        await session.handle_client_event({"type": "avatar.set", "avatar_id": "remote-model"})
+        await session.handle_client_event({"type": "avatar.set", "avatar_id": "haruto"})
         await session.handle_client_event({"type": "avatar.set", "avatar_id": "chitose"})
         await session.handle_client_event({"type": "mode.set", "mode": "avatar"})
         await session.handle_client_event(
@@ -401,7 +401,7 @@ def test_switching_avatar_cancels_active_turn_before_acknowledging_new_avatar(tm
     async def scenario():
         browser = FakeBrowser()
         qwen = FakeQwen()
-        child_qwen = FakeQwen()
+        male_qwen = FakeQwen()
         service = FakeConversationService()
         session = VisitorRealtimeSession(
             browser,
@@ -410,7 +410,7 @@ def test_switching_avatar_cancels_active_turn_before_acknowledging_new_avatar(tm
             AppSettings.for_workspace(tmp_path),
             service,
             qwen,
-            qwen_client_factory=lambda: child_qwen,
+            qwen_client_factory=lambda: male_qwen,
         )
         await session.open()
         await session.handle_client_event({"type": "mode.set", "mode": "avatar"})
@@ -420,20 +420,20 @@ def test_switching_avatar_cancels_active_turn_before_acknowledging_new_avatar(tm
         await session.handle_upstream_event(
             {"type": "response.created", "response": {"id": "resp_old"}}
         )
-        await session.handle_client_event({"type": "avatar.set", "avatar_id": "haruto"})
-        return browser, qwen, child_qwen, service, session
+        await session.handle_client_event({"type": "avatar.set", "avatar_id": "chitose"})
+        return browser, qwen, male_qwen, service, session
 
-    browser, qwen, child_qwen, service, session = asyncio.run(scenario())
+    browser, qwen, male_qwen, service, session = asyncio.run(scenario())
 
     assert qwen.cancels == 1
     assert service.persisted == []
     assert session.pending is None
-    assert session.avatar_id == "haruto"
-    assert child_qwen.session_configs[-1].voice == "longanxiaoxin"
+    assert session.avatar_id == "chitose"
+    assert male_qwen.session_configs[-1].voice == "longanlufeng"
     assert browser.json_events[-1] == {
         "type": "avatar.changed",
-        "avatar_id": "haruto",
-        "voice": "longanxiaoxin",
+        "avatar_id": "chitose",
+        "voice": "longanlufeng",
     }
 
 

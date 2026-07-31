@@ -49,7 +49,6 @@ class AppSettings:
     realtime_voice: str = "longanqian"
     realtime_voice_mao_pro: str = "longanqian"
     realtime_voice_chitose: str = "longanlufeng"
-    realtime_voice_haruto: str = "longanxiaoxin"
     realtime_history_turns: int = 6
     realtime_connect_timeout_seconds: int = 15
     # Realtime 首答：跳过扩写 LLM，并用 lite 证据档减少工具链耗时。
@@ -88,6 +87,9 @@ class AppSettings:
     amap_base_url: str = "https://restapi.amap.com"
     amap_route_default_mode: str = "driving"
     amap_scenic_navigation_radius_km: float = 10.0
+    guided_tour_tts_enabled: bool = False
+    azure_speech_key: str = ""
+    azure_speech_region: str = ""
     agent_use_map_tools: bool = True
     kg_enabled: bool = False
     neo4j_uri: str = ""
@@ -146,10 +148,6 @@ class AppSettings:
                 "LJ_REALTIME_VOICE_CHITOSE", workspace_env, "longanlufeng"
             ).strip()
             or "longanlufeng",
-            realtime_voice_haruto=_env_value(
-                "LJ_REALTIME_VOICE_HARUTO", workspace_env, "longanxiaoxin"
-            ).strip()
-            or "longanxiaoxin",
             realtime_history_turns=max(
                 1,
                 min(50, int(_env_value("LJ_REALTIME_HISTORY_TURNS", workspace_env, "6"))),
@@ -234,6 +232,13 @@ class AppSettings:
                 0.1,
                 float(_env_value("AMAP_SCENIC_NAVIGATION_RADIUS_KM", workspace_env, "10")),
             ),
+            guided_tour_tts_enabled=_env_bool(
+                "GUIDED_TOUR_TTS_ENABLED", workspace_env, False
+            ),
+            azure_speech_key=_env_value("AZURE_SPEECH_KEY", workspace_env, "").strip(),
+            azure_speech_region=_env_value(
+                "AZURE_SPEECH_REGION", workspace_env, ""
+            ).strip().lower(),
             kg_enabled=_env_bool("KG_ENABLED", workspace_env, False),
             neo4j_uri=_env_value("NEO4J_URI", workspace_env, "").strip(),
             neo4j_user=_env_value("NEO4J_USER", workspace_env, "").strip(),

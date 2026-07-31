@@ -92,6 +92,29 @@ def test_settings_reads_scenic_navigation_radius_from_environment(tmp_path: Path
     assert settings.amap_scenic_navigation_radius_km == 8.5
 
 
+def test_settings_exposes_disabled_guided_tour_speech_defaults(tmp_path: Path, monkeypatch):
+    for name in ("GUIDED_TOUR_TTS_ENABLED", "AZURE_SPEECH_KEY", "AZURE_SPEECH_REGION"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = AppSettings.for_workspace(tmp_path)
+
+    assert settings.guided_tour_tts_enabled is False
+    assert settings.azure_speech_key == ""
+    assert settings.azure_speech_region == ""
+
+
+def test_settings_reads_guided_tour_speech_environment(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("GUIDED_TOUR_TTS_ENABLED", "true")
+    monkeypatch.setenv("AZURE_SPEECH_KEY", "speech-secret")
+    monkeypatch.setenv("AZURE_SPEECH_REGION", "EASTASIA")
+
+    settings = AppSettings.for_workspace(tmp_path)
+
+    assert settings.guided_tour_tts_enabled is True
+    assert settings.azure_speech_key == "speech-secret"
+    assert settings.azure_speech_region == "eastasia"
+
+
 def test_settings_exposes_qwen_audio_realtime_defaults(tmp_path: Path, monkeypatch):
     for name in (
         "LJ_REALTIME_MODEL",
@@ -100,7 +123,6 @@ def test_settings_exposes_qwen_audio_realtime_defaults(tmp_path: Path, monkeypat
         "LJ_REALTIME_VOICE",
         "LJ_REALTIME_VOICE_MAO_PRO",
         "LJ_REALTIME_VOICE_CHITOSE",
-        "LJ_REALTIME_VOICE_HARUTO",
         "LJ_REALTIME_HISTORY_TURNS",
         "LJ_REALTIME_CONNECT_TIMEOUT_SECONDS",
     ):
@@ -114,7 +136,7 @@ def test_settings_exposes_qwen_audio_realtime_defaults(tmp_path: Path, monkeypat
     assert settings.realtime_voice == "longanqian"
     assert settings.realtime_voice_mao_pro == "longanqian"
     assert settings.realtime_voice_chitose == "longanlufeng"
-    assert settings.realtime_voice_haruto == "longanxiaoxin"
+    assert not hasattr(settings, "realtime_voice_haruto")
     assert settings.realtime_history_turns == 6
     assert settings.realtime_connect_timeout_seconds == 15
     assert settings.asr_correction_enabled is True

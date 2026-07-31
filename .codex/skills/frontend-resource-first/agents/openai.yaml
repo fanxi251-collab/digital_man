@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Resource First"
+  short_description: "Prioritize curated Vue frontend resources"
+  default_prompt: "Use $frontend-resource-first before building a Vue or Nuxt frontend experience."

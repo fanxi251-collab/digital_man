@@ -16,7 +16,8 @@ import {
   normalizeAvatarId,
   usePcmAudio,
 } from "../features/digital-human";
-import { findSuccessfulRouteSource } from "../lib/routeSummary.js";
+import { findSuccessfulRouteSource, resolveRouteSummary } from "../lib/routeSummary.js";
+import { latestUserText as resolveLatestUserText } from "../lib/realtimeTurnHelpers.js";
 
 export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged }) {
   const mode = ref("text");
@@ -96,9 +97,12 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
   const avatarCaption = computed(() =>
     resolveAvatarCaption(assistantTranscript.value, liveTranscript.value),
   );
-  const hasRouteSource = computed(() =>
-    Boolean(findSuccessfulRouteSource(sources.value)),
-  );
+  const latestRouteSummary = computed(() => {
+    const source = findSuccessfulRouteSource(sources.value);
+    return source ? resolveRouteSummary(source) : null;
+  });
+  const hasRouteSource = computed(() => Boolean(latestRouteSummary.value));
+  const latestUserText = computed(() => resolveLatestUserText(messages.value));
 
   function clearReconnectTimer() {
     if (reconnectTimer !== null) {
@@ -445,6 +449,8 @@ export function useRealtimeChat({ currentSessionId, visitorId, onSessionChanged 
     avatarCaption,
     isLoading,
     hasRouteSource,
+    latestRouteSummary,
+    latestUserText,
     audioLevel: audio.audioLevel,
     inputLevel: audio.inputLevel,
     inputQuality: audio.inputQuality,

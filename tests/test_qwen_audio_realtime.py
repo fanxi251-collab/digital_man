@@ -121,6 +121,6 @@ def test_realtime_client_rejects_a_session_voice_mismatch(tmp_path: Path):
         asyncio.run(
             client.open(
                 [],
-                QwenRealtimeSessionConfig("longanxiaoxin", "儿童导游完整角色指令"),
+                QwenRealtimeSessionConfig("longanqian", "女导游完整角色指令"),
             )
         )

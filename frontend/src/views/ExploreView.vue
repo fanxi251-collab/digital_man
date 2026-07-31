@@ -1,3 +1,4 @@
+
 <script setup>
 import { computed, onMounted, ref } from "vue";
 import AttractionDetailDrawer from "../components/AttractionDetailDrawer.vue";

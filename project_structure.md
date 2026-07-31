@@ -35,9 +35,10 @@ python -m pip install -e .
 - 管理端美食页面：`/admin/foods`
 - 管理端反馈页面：`/admin/feedback`
 - 静态 JS 和 CSS：`frontend/static/`
-- 数字人前端模块：`frontend/src/features/digital-human/`，集中管理三角色注册表、Live2D渲染器、口型/表情规则、语音控件、PCM采集播放和音频质量逻辑。
-- Live2D资源：`frontend/public/digital-human/live2d/`，包含本地Mao Pro、Chitose、Haruto运行时、Cubism Core、来源和授权说明；运行时不请求第三方模型资源。
-- 数字人角色：`mao_pro`为默认女导游，`chitose`为男导游，`haruto`为儿童导游；浏览器只保存角色ID，服务端白名单决定音色和表达约束。
+- 数字人前端模块：`frontend/src/features/digital-human/`，集中管理双角色注册表、Live2D渲染器、口型/表情规则、Haru语义动作、语音控件、PCM采集播放和音频质量逻辑。
+- Live2D资源：`frontend/public/digital-human/live2d/`，包含本地Haru Greeter、Mao Pro回滚资源、Chitose运行时、Cubism Core、来源和授权说明；运行时不请求第三方模型资源。
+- 数字人角色：兼容ID `mao_pro`当前显示Haru Greeter女导游，`chitose`为男导游；浏览器只保存角色ID，服务端白名单决定音色和表达约束。
+- Haru语义动作：`live2dSemanticMotion.js`根据实时状态、最近游客消息、助手字幕和路线来源选择最具体的动作；`live2dMotion.js`中的互斥调度器负责同义动作轮换、单动作锁定和旧定时器隔离。Chitose暂不启用该语义动作层。
 - 数字人 AudioWorklet：`frontend/public/digital-human/pcm-capture-worklet.js`；共享实时会话与协议仍保留在前端公共层。
 
 ### `data/`
@@ -145,7 +146,7 @@ RAG 检索增强生成核心能力。
 - `conversation.py`：准备 Agent/RAG 证据、会话上下文和持久化数据。
 - `answer_contract.py`：按常规/数字人及路线/非路线生成回答契约，并做确定性完整性校验。
 - `session.py`：桥接浏览器和 Qwen WebSocket，管理取消、降级、音频与最终文本。
-- `avatar_profiles.py`：维护三角色白名单、逐轮Qwen音色和临时表达风格，避免客户端直接指定任意音色或提示词。
+- `avatar_profiles.py`：维护双角色白名单、连接级Qwen音色和完整表达风格，避免客户端直接指定任意音色或提示词。
 
 ### `src/lingjing_ai/kg/`
 
@@ -206,5 +207,5 @@ RAG 检索增强生成核心能力。
 - 阿里云大模型 API Key 使用 `LJAPI_KEY`。
 - 双模式智能导游使用 `src/lingjing_ai/realtime/` 连接 Qwen-Audio Realtime；PostgreSQL `conversations` schema 是历史事实源。
 - 常规模式只请求文本，数字人模式请求音频和文本，模式切换不清空会话。
-- 三个数字人角色共用同一会话和历史；切换角色会取消正在录音、生成或播放的轮次，但切换本身不调用模型。
+- 两个数字人角色共用同一会话和历史；切换角色会取消正在录音、生成或播放的轮次，但切换本身不生成回答。
 - 不再使用 Chroma。

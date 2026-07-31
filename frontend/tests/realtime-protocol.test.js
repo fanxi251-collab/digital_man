@@ -54,11 +54,11 @@ test("avatar synchronization commits only a confirmed server role", () => {
 
 test("failed avatar synchronization retains the previous confirmed role", () => {
   const failed = resolveAvatarSyncTransition(
-    { activeAvatarId: "mao_pro", pendingAvatarId: "haruto", synchronized: false },
+    { activeAvatarId: "mao_pro", pendingAvatarId: "chitose", synchronized: false },
     {
       type: "avatar.change_failed",
       active_avatar_id: "mao_pro",
-      requested_avatar_id: "haruto",
+      requested_avatar_id: "chitose",
     },
   );
 

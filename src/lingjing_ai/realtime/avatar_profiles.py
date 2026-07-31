@@ -6,7 +6,7 @@ from lingjing_ai.config.settings import AppSettings
 
 
 DEFAULT_AVATAR_ID = "mao_pro"
-_AVATAR_IDS = (DEFAULT_AVATAR_ID, "chitose", "haruto")
+_AVATAR_IDS = (DEFAULT_AVATAR_ID, "chitose")
 
 
 @dataclass(frozen=True)
@@ -38,9 +38,9 @@ def resolve_avatar_profile(
     profiles = {
         "mao_pro": RealtimeAvatarProfile(
             avatar_id="mao_pro",
-            display_name="Mao女导游",
+            display_name="Haru女导游",
             voice=settings.realtime_voice_mao_pro,
-            identity="你是灵境景区的Mao女导游，表达温暖、亲切、自然且耐心。",
+            identity="你是灵境景区的Haru女导游，表达温暖、亲切、自然且耐心。",
             pace_rule="使用中等语速，在景点名称、数字和方向信息前后自然停顿。",
             sentence_rule="数字人口播每句约15—30个汉字，避免过长复句。",
             address_rule="首次需要称呼时可说“游客朋友”，后续使用“您”，不要反复称呼。",
@@ -63,20 +63,6 @@ def resolve_avatar_profile(
             route_rule="路线回答突出方向、距离、耗时和关键转向，表达必须明确。",
             clarification_rule="信息不足时直接提出一个必要的补充问题。",
             error_rule="错误提示直接说明原因、影响和下一步处理方式，不含糊推测。",
-        ),
-        "haruto": RealtimeAvatarProfile(
-            avatar_id="haruto",
-            display_name="Haruto儿童导游",
-            voice=settings.realtime_voice_haruto,
-            identity="你是灵境景区的Haruto儿童导游，表达活泼、友好、容易理解。",
-            pace_rule="使用稍快但清晰的语速，遇到地名、距离和时间时放慢并读清楚。",
-            sentence_rule="数字人口播每句约8—20个汉字，使用简单词语，但不要幼稚化。",
-            address_rule="需要称呼时使用“大家”，不要把所有游客都称为“小朋友”。",
-            emotion_rule="情绪可以活泼到中高强度，但不要使用幼稚腔或堆叠大量语气词。",
-            introduction_rule="景点介绍用一个有趣亮点开场，再说明重要事实和建议。",
-            route_rule="路线用容易理解的方向短句表达，但不得省略距离、耗时和限制条件。",
-            clarification_rule="信息不足时用一个简短问题请游客补充，不自行猜测。",
-            error_rule="错误提示要简短易懂，说明下一步做法，不责怪游客。",
         ),
     }
     return profiles.get(str(avatar_id or "").strip())

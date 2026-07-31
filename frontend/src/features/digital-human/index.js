@@ -3,6 +3,8 @@ export { default as DigitalHumanAvatarSelector } from "./components/DigitalHuman
 export { default as DigitalHumanAnswerPanel } from "./components/DigitalHumanAnswerPanel.vue";
 export { default as DigitalHumanVoiceControls } from "./components/DigitalHumanVoiceControls.vue";
 export { default as TranscriptConfirmation } from "./components/TranscriptConfirmation.vue";
+export { default as DigitalHumanTourMap } from "../guided-tour/components/DigitalHumanTourMap.vue";
+export { createGuidedTour } from "../guided-tour/composables/useGuidedTour.js";
 export { usePcmAudio } from "./composables/usePcmAudio.js";
 export {
   TAIL_PROTECTION_MS,
@@ -34,3 +36,9 @@ export {
   resolveLipSyncIds,
   smoothLipSyncValue,
 } from "./lib/live2dMotion.js";
+export {
+  MOTION_INTENT_DEBOUNCE_MS,
+  createMotionIntentDebouncer,
+  createMotionVariantRotator,
+  resolveHaruMotionIntent,
+} from "./lib/live2dSemanticMotion.js";

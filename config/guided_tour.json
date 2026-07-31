@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "route_id": "lingshan-classic-v1",
+  "name": "灵山胜境经典文化线",
+  "default_speed_mps": 8,
+  "polyline": [
+    "120.099984,31.424601",
+    "120.099540,31.425200",
+    "120.099100,31.426020",
+    "120.098350,31.426900",
+    "120.097550,31.427750",
+    "120.096900,31.428900",
+    "120.096477,31.430194",
+    "120.097200,31.429400",
+    "120.099000,31.428800",
+    "120.102420,31.428218",
+    "120.102700,31.426500",
+    "120.103054,31.424676"
+  ],
+  "stops": [
+    {
+      "stop_id": "nine-dragon",
+      "attraction_name": "九龙灌浴",
+      "longitude": 120.099984,
+      "latitude": 31.424601,
+      "trigger_radius_m": 35,
+      "dwell_ms": 3000,
+      "narration_text": "现在来到九龙灌浴。随着音乐与水幕展开，九龙环绕莲花，为新生的太子沐浴。这组大型动态景观把佛典故事转化为水、光与音乐交织的现场体验。表演时间可能随季节调整，请以景区当天公告为准。",
+      "local_audio_url": "/digital-human/narration/xiaoxiao/nine-dragon.mp3",
+      "focus_zoom": 18
+    },
+    {
+      "stop_id": "first-palm",
+      "attraction_name": "天下第一掌",
+      "longitude": 120.0991,
+      "latitude": 31.42602,
+      "trigger_radius_m": 35,
+      "dwell_ms": 3000,
+      "narration_text": "眼前是天下第一掌。它按照灵山大佛右手等比例铸造，让游客能够在近处感受大佛手印的尺度与庄严。民间常把触摸佛掌寄托为平安与福气，也使这里成为仰望大佛之前很有代表性的互动停留点。",
+      "local_audio_url": "/digital-human/narration/xiaoxiao/first-palm.mp3",
+      "focus_zoom": 18
+    },
+    {
+      "stop_id": "xiangfu-temple",
+      "attraction_name": "祥符禅寺",
+      "longitude": 120.09755,
+      "latitude": 31.42775,
+      "trigger_radius_m": 35,
+      "dwell_ms": 3000,
+      "narration_text": "这里是祥符禅寺。寺院所在的小灵山与玄奘法师的传说相连，延续着古老佛教道场的文化脉络。游览时不妨放慢脚步，留意殿宇、古树与山势之间的关系，并保持安静，尊重寺院礼仪。",
+      "local_audio_url": "/digital-human/narration/xiaoxiao/xiangfu-temple.mp3",
+      "focus_zoom": 18
+    },
+    {
+      "stop_id": "grand-buddha",
+      "attraction_name": "灵山大佛",
+      "longitude": 120.096477,
+      "latitude": 31.430194,
+      "trigger_radius_m": 35,
+      "dwell_ms": 3000,
+      "narration_text": "我们已经抵达灵山大佛。大佛依山而立，是灵山胜境最具代表性的地标。由台阶向上，视线会从莲花宝座逐渐延伸到完整佛身；回望山下，还能看到景区中轴与太湖山水相互呼应的开阔景象。",
+      "local_audio_url": "/digital-human/narration/xiaoxiao/grand-buddha.mp3",
+      "focus_zoom": 18
+    },
+    {
+      "stop_id": "brahma-palace",
+      "attraction_name": "灵山梵宫",
+      "longitude": 120.10242,
+      "latitude": 31.428218,
+      "trigger_radius_m": 35,
+      "dwell_ms": 3000,
+      "narration_text": "现在来到灵山梵宫。这里以恢宏建筑、精细装饰与佛教艺术展陈著称，穹顶、廊柱和室内光影共同营造出庄严而华美的空间。入馆安排和演出场次可能变化，建议同时关注现场公告。",
+      "local_audio_url": "/digital-human/narration/xiaoxiao/brahma-palace.mp3",
+      "focus_zoom": 18
+    },
+    {
+      "stop_id": "wuyin-mandala",
+      "attraction_name": "五印坛城",
+      "longitude": 120.103054,
+      "latitude": 31.424676,
+      "trigger_radius_m": 35,
+      "dwell_ms": 3000,
+      "narration_text": "经典路线的最后一站是五印坛城。建筑以藏传佛教坛城意象为核心，通过鲜明色彩、层叠空间和艺术陈设呈现独特文化氛围。参观时可以从整体对称布局进入，再逐步观察细部纹样与象征元素。",
+      "local_audio_url": "/digital-human/narration/xiaoxiao/wuyin-mandala.mp3",
+      "focus_zoom": 18
+    }
+  ]
+}

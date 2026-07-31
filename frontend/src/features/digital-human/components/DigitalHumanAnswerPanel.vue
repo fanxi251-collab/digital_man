@@ -5,7 +5,12 @@ import AssistantAnswer from "../../../components/AssistantAnswer.vue";
 const props = defineProps({
   answerText: { type: String, default: "" },
   state: { type: String, default: "idle" },
+  contentKind: { type: String, default: "assistant" },
+  answerTitle: { type: String, default: "" },
+  hasRoutePreview: { type: Boolean, default: false },
+  requiresManualPlay: { type: Boolean, default: false },
 });
+const emit = defineEmits(["accept-route", "play-narration"]);
 
 const STICKY_THRESHOLD = 48;
 const answerBody = ref(null);
@@ -28,6 +33,10 @@ const emptyCopy = computed(() => ({
 }[props.state] || "向数字人提问后，回答将在这里显示。"));
 
 const normalizedAnswer = computed(() => String(props.answerText || "").trim());
+const panelTitle = computed(() => (
+  props.answerTitle
+  || (props.contentKind === "narration" ? "景点讲解" : "数字人回答")
+));
 
 function updateFollowState() {
   if (!answerBody.value) return;
@@ -51,7 +60,7 @@ watch(() => props.answerText, async (answerText) => {
 <template>
   <aside class="digital-human-answer" aria-label="数字人最新回答">
     <header class="digital-human-answer-header">
-      <strong>数字人回答</strong>
+      <strong>{{ panelTitle }}</strong>
       <span>{{ stateLabel }}</span>
     </header>
     <div
@@ -62,6 +71,12 @@ watch(() => props.answerText, async (answerText) => {
       <AssistantAnswer v-if="normalizedAnswer" :answer="normalizedAnswer" />
       <p v-else>{{ emptyCopy }}</p>
     </div>
+    <footer v-if="hasRoutePreview || requiresManualPlay" class="digital-human-answer-actions">
+      <button v-if="requiresManualPlay" type="button" @click="emit('play-narration')">播放讲解</button>
+      <button v-if="hasRoutePreview" type="button" class="route-preview-action" @click="emit('accept-route')">
+        沿此路线演示
+      </button>
+    </footer>
   </aside>
 </template>
 
@@ -73,7 +88,7 @@ watch(() => props.answerText, async (answerText) => {
   max-height: 360px;
   align-self: center;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.58);
   border-radius: 22px;
@@ -81,6 +96,32 @@ watch(() => props.answerText, async (answerText) => {
   box-shadow: 0 22px 54px rgba(15, 52, 58, 0.16);
   color: var(--guide-ink, #143f46);
   backdrop-filter: blur(22px) saturate(120%);
+}
+
+.digital-human-answer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid rgba(20, 63, 70, 0.09);
+  padding: 9px 14px 11px;
+}
+
+.digital-human-answer-actions button {
+  min-height: 36px;
+  border: 1px solid rgba(47, 125, 120, 0.2);
+  border-radius: 999px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #2f7d78;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.digital-human-answer-actions .route-preview-action {
+  border-color: transparent;
+  background: #2f7d78;
+  color: white;
 }
 
 .digital-human-answer-header {
@@ -164,6 +205,7 @@ watch(() => props.answerText, async (answerText) => {
 
   .digital-human-answer-header { padding: 10px 14px 8px; }
   .digital-human-answer-body { padding: 10px 14px 13px; }
+  .digital-human-answer-actions { padding: 7px 10px 9px; }
   .digital-human-answer-body > p,
   .digital-human-answer-body :deep(.answer-text) { font-size: 14px; line-height: 1.65; }
 }

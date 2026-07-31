@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import DigitalHumanAnswerPanel from "./DigitalHumanAnswerPanel.vue";
 import Live2DAvatarRenderer from "../renderers/Live2DAvatarRenderer.vue";
+import DigitalHumanTourMap from "../../guided-tour/components/DigitalHumanTourMap.vue";
 import {
   avatarExpression,
   resolveAvatarProfile,
@@ -11,6 +12,10 @@ import {
   createExpressionDebouncer,
   resolveLive2DExpression,
 } from "../lib/live2dExpression.js";
+import {
+  createMotionIntentDebouncer,
+  resolveHaruMotionIntent,
+} from "../lib/live2dSemanticMotion.js";
 
 const props = defineProps({
   avatarId: { type: String, default: "mao_pro" },
@@ -18,16 +23,49 @@ const props = defineProps({
   audioLevel: { type: Number, default: 0 },
   answerText: { type: String, default: "" },
   emotionText: { type: String, default: "" },
+  userText: { type: String, default: "" },
+  hasRouteSource: { type: Boolean, default: false },
+  contentKind: { type: String, default: "assistant" },
+  answerTitle: { type: String, default: "" },
+  tourStatus: { type: String, default: "loading" },
+  tourRoute: { type: Object, default: null },
+  tourPreviewRoute: { type: Object, default: null },
+  tourStops: { type: Array, default: () => [] },
+  tourPosition: { type: Object, default: null },
+  tourActiveStop: { type: Object, default: null },
+  tourDwellProgress: { type: Number, default: 0 },
+  tourSpeed: { type: Number, default: 1 },
+  locationMode: { type: String, default: "simulation" },
+  gpsStatus: { type: String, default: "idle" },
+  tourLoadError: { type: String, default: "" },
+  requiresManualPlay: { type: Boolean, default: false },
 });
+const emit = defineEmits([
+  "tour-start", "tour-pause", "tour-resume", "tour-speed-change", "tour-reset",
+  "location-mode-change", "accept-preview-route", "play-narration",
+]);
 
 const rendererKey = ref(0);
 const rendererReady = ref(false);
 const rendererError = ref("");
 const semanticExpression = ref(NEUTRAL_EXPRESSION);
+const semanticMotionIntent = ref("idle");
 const currentProfile = computed(() => resolveAvatarProfile(props.avatarId));
 const expression = computed(() => avatarExpression(props.avatarId, semanticExpression.value));
 const expressionDebouncer = createExpressionDebouncer((nextExpression) => {
   semanticExpression.value = nextExpression;
+});
+const motionIntentDebouncer = createMotionIntentDebouncer((nextIntent) => {
+  semanticMotionIntent.value = nextIntent;
+});
+const resolvedMotionIntent = computed(() => {
+  if (!currentProfile.value.semanticMotions) return "idle";
+  return resolveHaruMotionIntent({
+    state: props.state,
+    userText: props.userText,
+    assistantText: props.emotionText,
+    hasRouteSource: props.hasRouteSource,
+  });
 });
 
 const stateLabel = computed(() => ({
@@ -43,6 +81,18 @@ watch(
   (nextExpression) => {
     if (nextExpression === NEUTRAL_EXPRESSION) expressionDebouncer.reset();
     else expressionDebouncer.update(nextExpression);
+  },
+  { immediate: true },
+);
+watch(
+  resolvedMotionIntent,
+  (nextIntent) => {
+    // System and route states are authoritative; streamed wording waits briefly to avoid gesture flicker.
+    if (props.state !== "speaking" || props.hasRouteSource) {
+      motionIntentDebouncer.commitNow(nextIntent);
+    } else {
+      motionIntentDebouncer.update(nextIntent);
+    }
   },
   { immediate: true },
 );
@@ -68,9 +118,13 @@ watch(() => props.avatarId, () => {
   rendererReady.value = false;
   rendererError.value = "";
   expressionDebouncer.reset();
+  motionIntentDebouncer.commitNow("idle");
 });
 
-onBeforeUnmount(() => expressionDebouncer.dispose());
+onBeforeUnmount(() => {
+  expressionDebouncer.dispose();
+  motionIntentDebouncer.dispose();
+});
 </script>
 
 <template>
@@ -84,6 +138,7 @@ onBeforeUnmount(() => expressionDebouncer.dispose());
         :state="state"
         :audio-level="audioLevel"
         :expression="expression"
+        :motion-intent="semanticMotionIntent"
         @ready="markRendererReady"
         @error="markRendererFailed"
       />
@@ -98,18 +153,48 @@ onBeforeUnmount(() => expressionDebouncer.dispose());
       <div class="avatar-state-pill"><span></span>{{ stateLabel }}</div>
       <small class="avatar-attribution">{{ currentProfile.attribution }}</small>
     </div>
-    <DigitalHumanAnswerPanel :answer-text="answerText" :state="state" />
+    <div class="digital-human-companion">
+      <DigitalHumanTourMap
+        :route="tourRoute"
+        :preview-route="tourPreviewRoute"
+        :stops="tourStops"
+        :position="tourPosition"
+        :active-stop="tourActiveStop"
+        :dwell-progress="tourDwellProgress"
+        :status="tourStatus"
+        :speed="tourSpeed"
+        :location-mode="locationMode"
+        :gps-status="gpsStatus"
+        :load-error="tourLoadError"
+        @start="emit('tour-start')"
+        @pause="emit('tour-pause')"
+        @resume="emit('tour-resume')"
+        @speed-change="emit('tour-speed-change', $event)"
+        @reset="emit('tour-reset')"
+        @location-mode-change="emit('location-mode-change', $event)"
+      />
+      <DigitalHumanAnswerPanel
+        :answer-text="answerText"
+        :state="state"
+        :content-kind="contentKind"
+        :answer-title="answerTitle"
+        :has-route-preview="Boolean(tourPreviewRoute)"
+        :requires-manual-play="requiresManualPlay"
+        @accept-route="emit('accept-preview-route')"
+        @play-narration="emit('play-narration')"
+      />
+    </div>
   </section>
 </template>
 
 <style scoped>
 .digital-human-stage {
   position: relative;
-  width: min(980px, 100%);
-  min-height: 480px;
+  width: min(1180px, 100%);
+  min-height: 500px;
   justify-self: center;
   display: grid;
-  grid-template-columns: minmax(300px, 42%) minmax(0, 58%);
+  grid-template-columns: minmax(320px, 40%) minmax(0, 60%);
   align-items: stretch;
   gap: 24px;
   overflow: hidden;
@@ -123,11 +208,19 @@ onBeforeUnmount(() => expressionDebouncer.dispose());
 .avatar-visual {
   position: relative;
   min-width: 0;
-  min-height: 480px;
+  min-height: 500px;
   display: grid;
   place-items: center;
   overflow: hidden;
   border-radius: 24px;
+}
+
+.digital-human-companion {
+  min-width: 0;
+  min-height: 500px;
+  display: grid;
+  grid-template-rows: minmax(270px, 1.4fr) minmax(160px, .6fr);
+  gap: 14px;
 }
 
 .avatar-loading,
@@ -209,14 +302,20 @@ onBeforeUnmount(() => expressionDebouncer.dispose());
 @media (max-width: 900px) {
   .digital-human-stage {
     width: 100%;
-    height: 100%;
-    min-height: 0;
+    /* 舞台保持完整内容高度，原因是压缩到视口剩余空间会让地图、回答与输入框互相覆盖。 */
+    height: auto;
+    min-height: 702px;
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(260px, 1fr) minmax(132px, auto);
+    grid-template-rows: minmax(260px, auto) minmax(430px, auto);
     gap: 12px;
   }
 
   .avatar-visual { min-height: 260px; }
+  .digital-human-companion {
+    min-height: 430px;
+    grid-template-rows: minmax(245px, auto) minmax(150px, auto);
+    gap: 12px;
+  }
 }
 
 @media (max-width: 680px) {
